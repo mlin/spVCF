@@ -2,7 +2,7 @@
 
 Project VCF (aka multi-sample VCF) is the prevailing format for reporting small genetic variants discovered by high-throughput sequencing of a cohort of individuals. It encodes a two-dimensional matrix with variant sites down the rows and individuals across the columns, filled in with all the genotypes and associated QC measures (read depths, genotype likelihoods, etc.). Large cohorts harbor many rare variants, resulting in a sparse genotype matrix with reference-homozygous genotypes in the vast majority of entries. But the dense pVCF format encodes this very inefficiently -- a growing challenge as sequenced cohorts continue growing larger.
 
-In the last few years, a number of new formats and advanced data structures have been developed to address this and other shortcomings of VCF. In view of VCF's considerable inertia and utility for interoperable exchange, however, here we explore a minimal evolution to sparsely encode the "lowest-hanging fruit" of repetition, while leaving other aspects of the format undisturbed. 
+In the last few years, a number of new formats and advanced data structures have been developed to address this and other shortcomings of VCF. In view of VCF's considerable inertia and utility for interoperable exchange, however, here we explore a minimal evolution to sparsely encode the "lowest-hanging fruit" of repetition, while leaving other aspects of the format undisturbed. We can only emphasize that spVCF is at present a "strawman," far less sophisticated than other efforts, aimed at measuring what could be gained with a modest change.
 
 ## Build and test
 
