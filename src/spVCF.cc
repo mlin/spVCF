@@ -1,0 +1,261 @@
+#include "spVCF.h"
+#include <vector>
+#include <sstream>
+#include <algorithm>
+#include <cstdint>
+#include <stdexcept>
+#include <stdlib.h>
+#include <assert.h>
+
+using namespace std;
+
+namespace spVCF {
+
+// https://stackoverflow.com/a/236803
+template<typename Out>
+void split(const std::string &s, char delim, Out result) {
+    std::stringstream ss(s);
+    std::string item;
+    while (std::getline(ss, item, delim)) {
+        *(result++) = item;
+    }
+}
+
+class EncoderImpl : public Transcoder {
+public:
+    EncoderImpl() = default;
+    EncoderImpl(const EncoderImpl&) = delete;
+    string ProcessLine(const string& input_line) override;
+    void Stats(transcode_stats& stats) override;
+
+private:
+    uint64_t line_number_ = 0;
+    transcode_stats stats_;
+    vector<string> dense_entries_;
+    // TODO: clear memory every x lines
+};
+
+string EncoderImpl::ProcessLine(const string& input_line) {
+    ++line_number_;
+    // Pass through header lines
+    if (input_line.empty() || input_line[0] == '#') {
+        return input_line;
+    }
+    ++stats_.lines;
+
+    // Split the tab-separated line
+    vector<string> tokens;
+    tokens.reserve(dense_entries_.size());
+    split(input_line, '\t', back_inserter(tokens));
+    if (tokens.size() < 10) {
+        ostringstream msg;
+        msg << "Invalid project VCF: fewer than ten columns in line " << line_number_;
+        throw runtime_error(msg.str());
+    }
+    uint64_t N = tokens.size() - 9;
+
+    if (dense_entries_.empty()){ // First line: allocate the dense entries
+        dense_entries_.resize(N);
+        stats_.N = N;
+    } else if (dense_entries_.size() != N) { // Subsequent line -- check expected # columns
+        for (int i = 9; i < tokens.size(); i++) {
+            const string& t = tokens[i];
+            if (!t.empty() && t[0] == '"') {
+                throw runtime_error("Input seems to be sparse-encoded already");
+            }
+        }
+        ostringstream msg;
+        msg << "Inconsistent number of samples at line " << line_number_;
+        throw runtime_error(msg.str());
+    }
+
+    // Pass through first nine columns
+    ostringstream output_line;
+    output_line << tokens[0];
+    for (int i = 1; i < 9; i++) {
+        output_line << '\t' << tokens[i];
+    }
+
+    uint64_t quote_run = 0; // current run-length of quotes across the row
+    uint64_t sparse_cells = 0;
+    // Iterate over the columns, compare each entry with the last entry
+    // recorded densely.
+    for (uint64_t s = 0; s < N; s++) {
+        string& m = dense_entries_[s];
+        const string& t = tokens[s+9];
+        if (!t.empty() && t[0] == '"') {
+            throw runtime_error("Input seems to be sparse-encoded already");
+        }
+        if (m.empty() || m != t) {
+            // Entry doesn't match the last one recorded densely for this
+            // column. Output any accumulated run of quotes in the current row,
+            // then this new entry, and update the state appropriately.
+            if (quote_run) {
+                output_line << '\t' << '"';
+                if (quote_run > 1) {
+                    output_line << quote_run;
+                }
+                quote_run = 0;
+                ++sparse_cells;
+            }
+            output_line << '\t' << t;
+            ++sparse_cells;
+            m = t;
+        } else {
+            // Entry matches; add to the current run of quotes
+            quote_run++;
+        }
+    }
+    // Output final run of quotes
+    if (quote_run) {
+        output_line << '\t' << '"';
+        if (quote_run > 1) {
+            output_line << quote_run;
+        }
+        ++sparse_cells;
+    }
+
+    stats_.sparse_cells += sparse_cells;
+    auto sparse_pct = 100*sparse_cells/N;
+    if (sparse_pct <= 10) {
+        ++stats_.sparse90_lines;
+    }
+    if (sparse_pct <= 1) {
+        ++stats_.sparse99_lines;
+    }
+
+    return output_line.str();
+}
+
+void EncoderImpl::Stats(transcode_stats& stats) {
+    stats = stats_;
+}
+
+unique_ptr<Transcoder> NewEncoder() {
+    return make_unique<EncoderImpl>();
+}
+
+class DecoderImpl : public Transcoder {
+public:
+    DecoderImpl() = default;
+    DecoderImpl(const DecoderImpl&) = delete;
+    string ProcessLine(const string& input_line) override;
+    void Stats(transcode_stats& stats) override;
+
+private:
+    uint64_t line_number_ = 0;
+    transcode_stats stats_;
+    vector<string> dense_entries_;
+};
+
+string DecoderImpl::ProcessLine(const string& input_line) {
+    ++line_number_;
+    // Pass through header lines
+    if (input_line.empty() || input_line[0] == '#') {
+        return input_line;
+    }
+    ++stats_.lines;
+
+    // Split the tab-separated line
+    vector<string> tokens;
+    tokens.reserve(dense_entries_.size());
+    split(input_line, '\t', back_inserter(tokens));
+    if (tokens.size() < 10) {
+        ostringstream msg;
+        msg << "Invalid project VCF: fewer than ten columns in line " << line_number_;
+        throw runtime_error(msg.str());
+    }
+
+    // Figure out number of dense columns, the number of columns on the first line
+    uint64_t N = dense_entries_.empty() ? (tokens.size() - 9) : dense_entries_.size();
+    if (dense_entries_.empty()) {
+        dense_entries_.resize(N);
+        stats_.N = N;
+    }
+    assert(dense_entries_.size() == N);
+
+    // Pass through first nine columns
+    ostringstream output_line;
+    output_line << tokens[0];
+    for (int i = 1; i < 9; i++) {
+        output_line << '\t' << tokens[i];
+    }
+
+    // Iterate over the sparse columns
+    uint64_t sparse_cells = (tokens.size()-9), dense_cursor = 0;
+    for (uint64_t sparse_cursor = 0; sparse_cursor < sparse_cells; sparse_cursor++) {
+        const string& t = tokens[sparse_cursor+9];
+        if (t.empty()) {
+            ostringstream msg;
+            msg << "Empty entry on line " << line_number_;
+            throw runtime_error(msg.str());
+        }
+        if (t[0] != '"') {
+            // Dense entry - remember it and copy it to the output
+            if (dense_cursor >= N) {
+                ostringstream msg;
+                msg << "Greater-than-expected number of columns implied by sparse encoding of line " << line_number_;
+                throw runtime_error(msg.str());
+            }
+            dense_entries_[dense_cursor++] = t;
+            output_line << '\t' << t;
+        } else {
+            // Sparse entry - determine the run length
+            uint64_t r = 1;
+            if (t.size() > 1) {
+                errno = 0;
+                auto s = strtoul(t.substr(1).c_str(), nullptr, 10);
+                if (errno) {
+                    ostringstream msg;
+                    msg << "Undecodable sparse entry on line " << line_number_;
+                    throw runtime_error(msg.str());
+                }
+                r = s;
+            }
+            // Output the implied run of entries from the remembered state
+            if (dense_cursor + r > N) {
+                ostringstream msg;
+                msg << "Greater-than-expected number of columns implied by sparse encoding of line "
+                    << stats_.lines << "; expected " << N;
+                throw runtime_error(msg.str());
+            }
+            for (uint64_t p = 0; p < r; p++) {
+                if (dense_entries_[dense_cursor].empty()) {
+                    ostringstream msg;
+                    msg << "Invalid sparse encoding of line " << line_number_
+                        << "; missing preceding dense entries";
+                    throw runtime_error(msg.str());
+                }
+                output_line << '\t' << dense_entries_[dense_cursor++];
+            }
+            assert(dense_cursor <= N);
+        }
+    }
+    if (dense_cursor != N) {
+        ostringstream msg;
+        msg << "Unexpected number of columns implied by sparse encoding of line "
+            << stats_.lines << "; expected " << N << ", got " << dense_cursor;
+        throw runtime_error(msg.str());
+    }
+
+    stats_.sparse_cells += sparse_cells;
+    auto sparse_pct = 100*sparse_cells/N;
+    if (sparse_pct <= 10) {
+        ++stats_.sparse90_lines;
+    }
+    if (sparse_pct <= 1) {
+        ++stats_.sparse99_lines;
+    }
+
+    return output_line.str();
+}
+
+void DecoderImpl::Stats(transcode_stats& stats) {
+    stats = stats_;
+}
+
+unique_ptr<Transcoder> NewDecoder() {
+    return make_unique<DecoderImpl>();
+}
+
+}

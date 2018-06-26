@@ -1,2 +1,3 @@
-# spVCF
-Sparse Project VCF, a minimalist strawman for more-efficient encoding of joint genotype matrices
+# Sparse Project VCF (spVCF)
+Minimalist strawman for encoding cohort genotype matrices more efficiently
+
