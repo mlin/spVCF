@@ -2,8 +2,19 @@ language: cpp
 sudo: true
 dist: trusty
 script:
-  - |
-    set -ex -o pipefail
-    export GIT_REVISION="$(git describe --tags --long --dirty --always)"
-    docker build -t "spvcf:${GIT_REVISION}-tests" .
-    docker run --rm "spvcf:${GIT_REVISION}-tests"
+- |
+  set -ex -o pipefail
+  export GIT_REVISION="$(git describe --tags --long --dirty --always)"
+  docker build -t "spvcf:${GIT_REVISION}-tests" .
+  docker run --rm "spvcf:${GIT_REVISION}-tests"
+  docker run --rm -v $(pwd):/io "spvcf:${GIT_REVISION}-tests" cp spvcf /io
+  ./spvcf -h
+deploy:
+  provider: releases
+  api_key:
+    secure: AHG3d3SAeswsy5NyGoi5/yr8xZCbB8pjYcyOTSpB0yYjj4aGFRcEEuAYD8NOP1yU+kDXPPfJCnXDJfhhoM4Y6WEZOqrPc3PIiagdzBRWdzIJpF+NZkgekPPl4bp9eVXb+pn2AO7YC64VPnxqBk2nkMRquAVmeT3BuULGQB6UZliiIVNhiN7iOb99eEc7aeDtgJYRFfKLDEnL0dgpnOq6olhBHhCE+qWjjpnS/gUxsKJi6F+qKyZliNE3HPOzCEXN76UxDfxnoamBnbgD02qUmk3mLHoOI1Ow+qQVdzXPB4fYNsbaVkjS261nIFtJvnw2V8RHXnFSCdzz8DxbZxzXFQUuuZAAL8csTG4zHlk7W4DfzR+9d6qLvLrrp8Fx/p3ZZAFTC9PA9BiLuOicK1jr9Mnqzh0cuXlKi4CjOKCpko/bIKV4TE6RPZo2A2HVM84fL+sJQCmnlCRQIX1gPjW+aRsyZVMs/yDlgvjsR0lYTqGbFjJumZP4HPT1zpSpTiOwkZvQIrRqL8CvAi2owVYa4jWnn+5btaSsTSPYJ00gbjMmddqBj0s90rMvHGvuTvN9h6QILxUiAg06AfbeZr6k7lBX3hpSes3ayr7lAsCn2wVkOEebnEcdmQElygVM+yIa0aiIbddWLpb8xCt4W5VpTDl3Nd8Uw2HbqwqRzA7WIl0=
+  file: spvcf
+  skip_cleanup: true
+  on:
+    repo: mlin/spVCF
+    tags: true
