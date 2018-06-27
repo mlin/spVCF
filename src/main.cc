@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <getopt.h>
+#include <unistd.h>
 #include "spVCF.h"
 
 using namespace std;
@@ -73,6 +74,9 @@ int main(int argc, char *argv[]) {
             throw runtime_error("Failed to open input file");
         }
         input_stream = input_box.get();
+    } else if (isatty(STDIN_FILENO)) {
+        usage();
+        return -1;
     }
 
     ostream* output_stream = &cout;
