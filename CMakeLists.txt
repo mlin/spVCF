@@ -14,6 +14,7 @@ add_executable(spvcf src/main.cc src/spVCF.cc src/spVCF.h)
 target_include_directories(spvcf PRIVATE src)
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     target_compile_options(spvcf PRIVATE -fdiagnostics-color=auto -march=ivybridge)
+    set_target_properties(spvcf PROPERTIES LINK_FLAGS -static-libstdc++)
 endif()
 
 include(CTest)
