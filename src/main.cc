@@ -13,8 +13,9 @@ void usage() {
     cout << "Read from standard input if input filename is empty or -" << endl;
     cout << "Options:" << endl;
     cout << "  -o,--output out.spvcf  Write to out.spvcf instead of standard output" << endl;
-    cout << "  -S,--squeeze           Discard QC measures from cells with no ALT allele called" << endl;
     cout << "  -d,--decode            Decode from the sparse format instead of encoding to" << endl;
+    cout << "  -S,--squeeze           Discard QC measures from cells with no ALT allele called" << endl;
+    cout << "  -p,--checkpoint-period Ensure checkpoints (full dense row) at this period or less [1000]" << endl;
     cout << "  -q,--quiet             Suppress statistics printed to standard error" << endl;
     cout << "  -h,--help              Show this usage message" << endl;
     cout << "source revision: " << GIT_REVISION << endl;
@@ -26,18 +27,20 @@ int main(int argc, char *argv[]) {
     bool decode = false;
     bool quiet = false;
     string output_filename;
+    uint64_t checkpoint_period = 1000;
 
     static struct option long_options[] = {
         {"help", no_argument, 0, 'h'},
-        {"squeeze", no_argument, 0, 'S'},
         {"decode", no_argument, 0, 'd'},
+        {"squeeze", no_argument, 0, 'S'},
+        {"checkpoint-period", required_argument, 0, 'p'},
         {"quiet", no_argument, 0, 'q'},
         {"output", required_argument, 0, 'o'},
         {0, 0, 0, 0}
     };
 
     int c;
-    while (-1 != (c = getopt_long(argc, argv, "hSdqo:",
+    while (-1 != (c = getopt_long(argc, argv, "hSdp:qo:",
                                   long_options, nullptr))) {
         switch (c) {
             case 'h':
@@ -48,6 +51,14 @@ int main(int argc, char *argv[]) {
                 break;
             case 'd':
                 decode = true;
+                break;
+            case 'p':
+                errno=0;
+                checkpoint_period = strtoull(optarg, nullptr, 10);
+                if (errno) {
+                    cerr << "spvcf: couldn't parse --checkpoint-period" << endl;
+                    return -1;
+                }
                 break;
             case 'q':
                 quiet = true;
@@ -103,7 +114,12 @@ int main(int argc, char *argv[]) {
     }
 
     // Encode or decode
-    unique_ptr<spVCF::Transcoder> tc = decode ? spVCF::NewDecoder() : spVCF::NewEncoder(squeeze);
+    unique_ptr<spVCF::Transcoder> tc;
+    if (decode) {
+        tc = spVCF::NewDecoder();
+    } else {
+        tc = spVCF::NewEncoder(checkpoint_period, squeeze);
+    }
     for (string input_line; getline(*input_stream, input_line); ) {
         *output_stream << tc->ProcessLine(input_line) << endl;
         if (input_stream->fail() || input_stream->bad() || !output_stream->good()) {
@@ -132,6 +148,9 @@ int main(int argc, char *argv[]) {
         cerr << "lines (non-header) = " << fixed << stats.lines << endl;
         cerr << "lines (90% sparse) = " << fixed << stats.sparse90_lines << endl;
         cerr << "lines (99% sparse) = " << fixed << stats.sparse99_lines << endl;
+        if (!decode) {
+            cerr << "checkpoints = " << fixed << stats.checkpoints << endl;
+        }
     }
 
     return 0;

@@ -31,8 +31,9 @@ spvcf [options] [in.vcf|-]
 Read from standard input if input filename is empty or -
 Options:
   -o,--output out.spvcf  Write to out.spvcf instead of standard output
-  -S,--squeeze           Discard QC measures from cells with no ALT allele called
   -d,--decode            Decode from the sparse format instead of encoding to
+  -S,--squeeze           Discard QC measures from cells with no ALT allele called
+  -p,--checkpoint-period Ensure checkpoints (full dense row) at this period or less [1000]
   -q,--quiet             Suppress statistics printed to standard error
   -h,--help              Show this usage message
 ```

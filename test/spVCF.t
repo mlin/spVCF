@@ -15,11 +15,11 @@ plan tests 11
 pigz -dc "$HERE/data/small.vcf.gz" > $D/small.vcf
 "$EXE" -o $D/small.spvcf $D/small.vcf
 is "$?" "0" "filename I/O"
-is "$(cat $D/small.spvcf | wc -c)" "36842025" "filename I/O output size"
+is "$(cat $D/small.spvcf | wc -c)" "36878360" "filename I/O output size"
 
 pigz -dc "$HERE/data/small.vcf.gz" | "$EXE" -q > $D/small.spvcf
 is "$?" "0" "piped I/O"
-is "$(cat $D/small.spvcf | wc -c)" "36842025" "piped I/O output size"
+is "$(cat $D/small.spvcf | wc -c)" "36878360" "piped I/O output size"
 
 "$EXE" -d -o $D/small.roundtrip.vcf $D/small.spvcf
 is "$?" "0" "decode"
@@ -29,9 +29,9 @@ is "$(cat $D/small.vcf | grep -v ^# | sha256sum)" \
    "$(cat $D/small.roundtrip.vcf | grep -v ^# | sha256sum)" \
    "roundtrip fidelity"
 
-"$EXE" -S -o $D/small.squeezed.spvcf $D/small.vcf
+"$EXE" -S -p 500 -o $D/small.squeezed.spvcf $D/small.vcf
 is "$?" "0" "squeeze"
-is "$(cat $D/small.squeezed.spvcf | wc -c)" "13553338" "squeezed output size"
+is "$(cat $D/small.squeezed.spvcf | wc -c)" "13558972" "squeezed output size"
 
 "$EXE" -d -q -o $D/small.squeezed.roundtrip.vcf $D/small.squeezed.spvcf
 is "$?" "0" "squeezed roundtrip decode"
