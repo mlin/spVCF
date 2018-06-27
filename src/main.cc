@@ -1,4 +1,6 @@
 #include <iostream>
+#include <iomanip>
+#include <locale>
 #include <fstream>
 #include <getopt.h>
 #include <unistd.h>
@@ -11,6 +13,7 @@ void usage() {
     cout << "Read from standard input if input filename is empty or -" << endl;
     cout << "Options:" << endl;
     cout << "  -o,--output out.vcf    Write to out.vcf instead of standard output" << endl;
+    cout << "  -S,--squeeze           Discard QC measures from cells with no ALT allele called" << endl;
     cout << "  -d,--decode            Decode from the sparse format instead of encoding to" << endl;
     cout << "  -q,--quiet             Suppress statistics printed to standard error" << endl;
     cout << "  -h,--help              Show this usage message" << endl;
@@ -19,12 +22,14 @@ void usage() {
 
 int main(int argc, char *argv[]) {
     // Parse arguments
+    bool squeeze = false;
     bool decode = false;
     bool quiet = false;
     string output_filename;
 
     static struct option long_options[] = {
         {"help", no_argument, 0, 'h'},
+        {"squeeze", no_argument, 0, 'S'},
         {"decode", no_argument, 0, 'd'},
         {"quiet", no_argument, 0, 'q'},
         {"output", required_argument, 0, 'o'},
@@ -32,12 +37,15 @@ int main(int argc, char *argv[]) {
     };
 
     int c;
-    while (-1 != (c = getopt_long(argc, argv, "hdqo:",
+    while (-1 != (c = getopt_long(argc, argv, "hSdqo:",
                                   long_options, nullptr))) {
         switch (c) {
             case 'h':
                 usage();
                 return 0;
+            case 'S':
+                squeeze = true;
+                break;
             case 'd':
                 decode = true;
                 break;
@@ -55,6 +63,11 @@ int main(int argc, char *argv[]) {
                 usage();
                 return -1;
         }
+    }
+
+    if (squeeze && decode) {
+        cerr << "spvcf: --squeeze and --decode should not be specified together" << endl;
+        return -1;
     }
 
     string input_filename;
@@ -90,7 +103,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Encode or decode
-    unique_ptr<spVCF::Transcoder> tc = decode ? spVCF::NewDecoder() : spVCF::NewEncoder();
+    unique_ptr<spVCF::Transcoder> tc = decode ? spVCF::NewDecoder() : spVCF::NewEncoder(squeeze);
     for (string input_line; getline(*input_stream, input_line); ) {
         *output_stream << tc->ProcessLine(input_line) << endl;
         if (input_stream->fail() || input_stream->bad() || !output_stream->good()) {
@@ -108,14 +121,17 @@ int main(int argc, char *argv[]) {
 
     // Output stats
     if (!quiet) {
-        spVCF::transcode_stats stats;
-        tc->Stats(stats);
-        cerr << "dense cells = " << stats.N*stats.lines << endl;
-        cerr << "sparse cells = " << stats.sparse_cells << endl;
-        cerr << "N = " << stats.N << endl;
-        cerr << "lines (non-header) = " << stats.lines << endl;
-        cerr << "lines (90% sparse) = " << stats.sparse90_lines << endl;
-        cerr << "lines (99% sparse) = " << stats.sparse99_lines << endl;
+        auto stats = tc->Stats();
+        cerr.imbue(locale(""));
+        cerr << "N = " << fixed << stats.N << endl;
+        cerr << "dense cells = " << fixed << stats.N*stats.lines << endl;
+        if (squeeze) {
+            cerr << "squeezed cells = " << fixed << stats.squeezed_cells << endl;
+        }
+        cerr << "sparse cells = " << fixed << stats.sparse_cells << endl;
+        cerr << "lines (non-header) = " << fixed << stats.lines << endl;
+        cerr << "lines (90% sparse) = " << fixed << stats.sparse90_lines << endl;
+        cerr << "lines (99% sparse) = " << fixed << stats.sparse99_lines << endl;
     }
 
     return 0;

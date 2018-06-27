@@ -10,23 +10,33 @@ D=/tmp/spVCFTests
 rm -rf $D
 mkdir -p $D
 
-plan tests 7
+plan tests 11
 
 pigz -dc "$HERE/data/small.vcf.gz" > $D/small.vcf
-"$EXE" -o $D/small.ssvcf $D/small.vcf
+"$EXE" -o $D/small.spvcf $D/small.vcf
 is "$?" "0" "filename I/O"
-is "$(cat $D/small.ssvcf | wc -c)" "36842025" "filename I/O output size"
+is "$(cat $D/small.spvcf | wc -c)" "36842025" "filename I/O output size"
 
-pigz -dc "$HERE/data/small.vcf.gz" | "$EXE" -q > $D/small.ssvcf
+pigz -dc "$HERE/data/small.vcf.gz" | "$EXE" -q > $D/small.spvcf
 is "$?" "0" "piped I/O"
-is "$(cat $D/small.ssvcf | wc -c)" "36842025" "piped I/O output size"
+is "$(cat $D/small.spvcf | wc -c)" "36842025" "piped I/O output size"
 
-"$EXE" -d -o $D/small.roundtrip.vcf $D/small.ssvcf
+"$EXE" -d -o $D/small.roundtrip.vcf $D/small.spvcf
 is "$?" "0" "decode"
 is "$(cat $D/small.roundtrip.vcf | wc -c)" "54007969" "roundtrip decode"
 
 is "$(cat $D/small.vcf | grep -v ^# | sha256sum)" \
    "$(cat $D/small.roundtrip.vcf | grep -v ^# | sha256sum)" \
    "roundtrip fidelity"
+
+"$EXE" -S -o $D/small.squeezed.spvcf $D/small.vcf
+is "$?" "0" "squeeze"
+is "$(cat $D/small.squeezed.spvcf | wc -c)" "13553338" "squeezed output size"
+
+"$EXE" -d -o $D/small.squeezed.roundtrip.vcf $D/small.squeezed.spvcf
+is "$?" "0" "squeezed roundtrip decode"
+is "$(cat $D/small.vcf | grep -v ^# | sed -r 's/(\t[^:]+):[^\t]+/\1/g' | sha256sum)" \
+   "$(cat $D/small.squeezed.roundtrip.vcf | grep -v ^# | sed -r 's/(\t[^:]+):[^\t]+/\1/g' | sha256sum)" \
+   "squeezed roundtrip GT fidelity"
 
 rm -rf $D

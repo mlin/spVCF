@@ -21,18 +21,37 @@ void split(const std::string &s, char delim, Out result) {
     }
 }
 
-class EncoderImpl : public Transcoder {
+// Base class for encoder/decoder with common state & error-handling
+class TranscoderBase : public Transcoder {
 public:
-    EncoderImpl() = default;
-    EncoderImpl(const EncoderImpl&) = delete;
-    string ProcessLine(const string& input_line) override;
-    void Stats(transcode_stats& stats) override;
+    TranscoderBase() = default;
+    TranscoderBase(const TranscoderBase&) = delete;
 
-private:
+    transcode_stats Stats() override { return stats_; }
+
+protected:
+    void fail(const string& msg) {
+        ostringstream ss;
+        ss << "spvcf: " << msg << " (line " << line_number_ << ")";
+        throw runtime_error(ss.str());
+    }
+
+    // state to be updated by derived classes
     uint64_t line_number_ = 0;
     transcode_stats stats_;
-    vector<string> dense_entries_;
-    // TODO: clear memory every x lines
+};
+
+class EncoderImpl : public TranscoderBase {
+public:
+    EncoderImpl(bool squeeze) : squeeze_(squeeze) {}
+    EncoderImpl(const EncoderImpl&) = delete;
+    string ProcessLine(const string& input_line) override;
+
+private:
+    void Squeeze(vector<string>& line);
+
+    bool squeeze_ = false;
+    vector<string> dense_entries_; // TODO: clear memory every x lines
 };
 
 string EncoderImpl::ProcessLine(const string& input_line) {
@@ -48,9 +67,7 @@ string EncoderImpl::ProcessLine(const string& input_line) {
     tokens.reserve(dense_entries_.size());
     split(input_line, '\t', back_inserter(tokens));
     if (tokens.size() < 10) {
-        ostringstream msg;
-        msg << "Invalid project VCF: fewer than ten columns in line " << line_number_;
-        throw runtime_error(msg.str());
+        fail("Invalid: fewer than 10 columns");
     }
     uint64_t N = tokens.size() - 9;
 
@@ -61,12 +78,14 @@ string EncoderImpl::ProcessLine(const string& input_line) {
         for (int i = 9; i < tokens.size(); i++) {
             const string& t = tokens[i];
             if (!t.empty() && t[0] == '"') {
-                throw runtime_error("Input seems to be sparse-encoded already");
+                fail("Input seems to be sparse-encoded already");
             }
         }
-        ostringstream msg;
-        msg << "Inconsistent number of samples at line " << line_number_;
-        throw runtime_error(msg.str());
+        fail("Inconsistent number of samples");
+    }
+
+    if (squeeze_) {
+        Squeeze(tokens);
     }
 
     // Pass through first nine columns
@@ -84,7 +103,7 @@ string EncoderImpl::ProcessLine(const string& input_line) {
         string& m = dense_entries_[s];
         const string& t = tokens[s+9];
         if (!t.empty() && t[0] == '"') {
-            throw runtime_error("Input seems to be sparse-encoded already");
+            fail("Input seems to be sparse-encoded already");
         }
         if (m.empty() || m != t) {
             // Entry doesn't match the last one recorded densely for this
@@ -127,24 +146,50 @@ string EncoderImpl::ProcessLine(const string& input_line) {
     return output_line.str();
 }
 
-void EncoderImpl::Stats(transcode_stats& stats) {
-    stats = stats_;
+// Discard QC measures (FORMAT fields) for entries which have no ALT allele
+// hard-called
+void EncoderImpl::Squeeze(vector<string>& line) {
+    const auto& spec = line[8];
+    if (spec != "GT" && (spec.size() < 3 || spec.substr(0, 3) != "GT:")) {
+        fail("cells don't start with genotype (GT)");
+    }
+
+    vector<string> fields, gt;
+    for (int s = 9; s < line.size(); s++) {
+        // split the FORMAT fields in this cell
+        fields.clear();
+        split(line[s], ':', back_inserter(fields));
+        // split GT into the individual allele numbers
+        gt.clear();
+        split(fields[0], '/', back_inserter(gt));
+        if (gt.size() == 1) {
+            gt.clear();
+            split(fields[0], '|', back_inserter(gt));
+        }
+        if (gt.empty()) {
+            fail("empty cell");
+        }
+
+        // squeeze if all of the alleles are . or 0
+        if (std::all_of(gt.begin(), gt.end(),
+                        [](const string& f) { return f == "." || f == "0"; })) {
+            line[s] = fields[0];
+            ++stats_.squeezed_cells;
+        }
+    }
 }
 
-unique_ptr<Transcoder> NewEncoder() {
-    return make_unique<EncoderImpl>();
+unique_ptr<Transcoder> NewEncoder(bool squeeze) {
+    return make_unique<EncoderImpl>(squeeze);
 }
 
-class DecoderImpl : public Transcoder {
+class DecoderImpl : public TranscoderBase {
 public:
     DecoderImpl() = default;
     DecoderImpl(const DecoderImpl&) = delete;
     string ProcessLine(const string& input_line) override;
-    void Stats(transcode_stats& stats) override;
 
 private:
-    uint64_t line_number_ = 0;
-    transcode_stats stats_;
     vector<string> dense_entries_;
 };
 
@@ -161,9 +206,7 @@ string DecoderImpl::ProcessLine(const string& input_line) {
     tokens.reserve(dense_entries_.size());
     split(input_line, '\t', back_inserter(tokens));
     if (tokens.size() < 10) {
-        ostringstream msg;
-        msg << "Invalid project VCF: fewer than ten columns in line " << line_number_;
-        throw runtime_error(msg.str());
+        fail("Invalid project VCF: fewer than 10 columns");
     }
 
     // Figure out number of dense columns, the number of columns on the first line
@@ -186,16 +229,14 @@ string DecoderImpl::ProcessLine(const string& input_line) {
     for (uint64_t sparse_cursor = 0; sparse_cursor < sparse_cells; sparse_cursor++) {
         const string& t = tokens[sparse_cursor+9];
         if (t.empty()) {
-            ostringstream msg;
-            msg << "Empty entry on line " << line_number_;
-            throw runtime_error(msg.str());
+            fail("empty cell");
         }
         if (t[0] != '"') {
             // Dense entry - remember it and copy it to the output
+            // TODO: Perhaps fill QC fields with missing values (.) if they were squeezed out.
+            //       The VCF spec does however say "Trailing fields can be dropped"
             if (dense_cursor >= N) {
-                ostringstream msg;
-                msg << "Greater-than-expected number of columns implied by sparse encoding of line " << line_number_;
-                throw runtime_error(msg.str());
+                fail("Greater-than-expected number of columns implied by sparse encoding");
             }
             dense_entries_[dense_cursor++] = t;
             output_line << '\t' << t;
@@ -206,25 +247,20 @@ string DecoderImpl::ProcessLine(const string& input_line) {
                 errno = 0;
                 auto s = strtoul(t.substr(1).c_str(), nullptr, 10);
                 if (errno) {
-                    ostringstream msg;
-                    msg << "Undecodable sparse entry on line " << line_number_;
-                    throw runtime_error(msg.str());
+                    fail("Undecodable sparse cell");
                 }
                 r = s;
             }
             // Output the implied run of entries from the remembered state
             if (dense_cursor + r > N) {
                 ostringstream msg;
-                msg << "Greater-than-expected number of columns implied by sparse encoding of line "
-                    << stats_.lines << "; expected " << N;
-                throw runtime_error(msg.str());
+                msg << "Greater-than-expected number of columns implied by sparse encoding"
+                    << " (expected N=" << N << ")";
+                fail(msg.str());
             }
             for (uint64_t p = 0; p < r; p++) {
                 if (dense_entries_[dense_cursor].empty()) {
-                    ostringstream msg;
-                    msg << "Invalid sparse encoding of line " << line_number_
-                        << "; missing preceding dense entries";
-                    throw runtime_error(msg.str());
+                    fail("Missing preceding dense cells");
                 }
                 output_line << '\t' << dense_entries_[dense_cursor++];
             }
@@ -233,9 +269,9 @@ string DecoderImpl::ProcessLine(const string& input_line) {
     }
     if (dense_cursor != N) {
         ostringstream msg;
-        msg << "Unexpected number of columns implied by sparse encoding of line "
-            << stats_.lines << "; expected " << N << ", got " << dense_cursor;
-        throw runtime_error(msg.str());
+        msg << "Unexpected number of columns implied by sparse encoding"
+            << " (expected N=" << N << ", got " << dense_cursor << ")";
+        fail(msg.str());
     }
 
     stats_.sparse_cells += sparse_cells;
@@ -248,10 +284,6 @@ string DecoderImpl::ProcessLine(const string& input_line) {
     }
 
     return output_line.str();
-}
-
-void DecoderImpl::Stats(transcode_stats& stats) {
-    stats = stats_;
 }
 
 unique_ptr<Transcoder> NewDecoder() {
