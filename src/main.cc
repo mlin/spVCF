@@ -12,7 +12,7 @@ void usage() {
     cout << "spvcf [options] [in.vcf|-]" << endl;
     cout << "Read from standard input if input filename is empty or -" << endl;
     cout << "Options:" << endl;
-    cout << "  -o,--output out.vcf    Write to out.vcf instead of standard output" << endl;
+    cout << "  -o,--output out.spvcf  Write to out.spvcf instead of standard output" << endl;
     cout << "  -S,--squeeze           Discard QC measures from cells with no ALT allele called" << endl;
     cout << "  -d,--decode            Decode from the sparse format instead of encoding to" << endl;
     cout << "  -q,--quiet             Suppress statistics printed to standard error" << endl;
