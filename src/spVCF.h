@@ -10,14 +10,16 @@ struct transcode_stats {
     uint64_t sparse90_lines = 0;   // lines encoded with <=10% the dense number of cells
     uint64_t sparse99_lines = 0;   // " <=1% "
     // dense_cells = lines*N
+
+    uint64_t squeezed_cells = 0;   // cells whose QC measures were dropped
 };
 
 class Transcoder {
 public:
     virtual std::string ProcessLine(const std::string& input_line) = 0;
-    virtual void Stats(transcode_stats& stats) = 0;
+    virtual transcode_stats Stats() = 0;
 };
-std::unique_ptr<Transcoder> NewEncoder();
+std::unique_ptr<Transcoder> NewEncoder(bool squeeze);
 std::unique_ptr<Transcoder> NewDecoder();
 
 }
