@@ -12,6 +12,7 @@ struct transcode_stats {
     // dense_cells = lines*N
 
     uint64_t squeezed_cells = 0;   // cells whose QC measures were dropped
+    uint64_t checkpoints = 0;      // checkpoints (purposely dense rows to aid partial decoding)
 };
 
 class Transcoder {
@@ -19,7 +20,7 @@ public:
     virtual std::string ProcessLine(const std::string& input_line) = 0;
     virtual transcode_stats Stats() = 0;
 };
-std::unique_ptr<Transcoder> NewEncoder(bool squeeze);
+std::unique_ptr<Transcoder> NewEncoder(uint64_t checkpoint_period, bool squeeze);
 std::unique_ptr<Transcoder> NewDecoder();
 
 }

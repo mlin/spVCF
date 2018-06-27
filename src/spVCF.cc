@@ -43,15 +43,16 @@ protected:
 
 class EncoderImpl : public TranscoderBase {
 public:
-    EncoderImpl(bool squeeze) : squeeze_(squeeze) {}
+    EncoderImpl(uint64_t checkpoint_period, bool squeeze) : checkpoint_period_(checkpoint_period), squeeze_(squeeze) {}
     EncoderImpl(const EncoderImpl&) = delete;
     string ProcessLine(const string& input_line) override;
 
 private:
     void Squeeze(vector<string>& line);
 
+    uint64_t checkpoint_period_ = 0, since_checkpoint_ = 0;
     bool squeeze_ = false;
-    vector<string> dense_entries_; // TODO: clear memory every x lines
+    vector<string> dense_entries_;
 };
 
 string EncoderImpl::ProcessLine(const string& input_line) {
@@ -134,6 +135,29 @@ string EncoderImpl::ProcessLine(const string& input_line) {
         ++sparse_cells;
     }
 
+    // CHECKPOINT -- return a densely-encoded row -- if we've hit the specified
+    // period OR if we've passed half the period and this line is mostly dense
+    // anyway
+    if (checkpoint_period_ > 0 &&
+        (since_checkpoint_ >= checkpoint_period_ ||
+         (since_checkpoint_*2 >= checkpoint_period_ && sparse_cells*2 >= N))) {
+        ostringstream cp;
+        for (int t = 0; t < tokens.size(); t++) {
+            if (t > 0) {
+                cp << '\t';
+            }
+            cp << tokens[t];
+            if (t >= 9) {
+                dense_entries_[t-9] = tokens[t];
+            }
+            assert(tokens.size() == stats_.N+9);
+        }
+        since_checkpoint_ = 0;
+        ++stats_.checkpoints;
+        return cp.str();
+    }
+    ++since_checkpoint_;
+
     stats_.sparse_cells += sparse_cells;
     auto sparse_pct = 100*sparse_cells/N;
     if (sparse_pct <= 10) {
@@ -179,8 +203,8 @@ void EncoderImpl::Squeeze(vector<string>& line) {
     }
 }
 
-unique_ptr<Transcoder> NewEncoder(bool squeeze) {
-    return make_unique<EncoderImpl>(squeeze);
+unique_ptr<Transcoder> NewEncoder(uint64_t checkpoint_period, bool squeeze) {
+    return make_unique<EncoderImpl>(checkpoint_period, squeeze);
 }
 
 class DecoderImpl : public TranscoderBase {
