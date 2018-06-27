@@ -1,0 +1,9 @@
+language: cpp
+sudo: true
+dist: trusty
+script:
+  - |
+    set -ex -o pipefail
+    export GIT_REVISION="$(git describe --tags --long --dirty --always)"
+    docker build -t "spvcf:${GIT_REVISION}-tests" .
+    docker run --rm "spvcf:${GIT_REVISION}-tests"

@@ -13,6 +13,7 @@ void usage() {
     cout << "  -d,--decode            Decode from the sparse format instead of encoding to" << endl;
     cout << "  -q,--quiet             Suppress statistics printed to standard error" << endl;
     cout << "  -h,--help              Show this usage message" << endl;
+    cout << "source revision: " << GIT_REVISION << endl;
 }
 
 int main(int argc, char *argv[]) {
