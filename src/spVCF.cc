@@ -17,7 +17,7 @@ void split(const std::string &s, char delim, Out result) {
     std::stringstream ss(s);
     std::string item;
     while (std::getline(ss, item, delim)) {
-        *(result++) = item;
+        *(result++) = move(item);
     }
 }
 
@@ -106,7 +106,7 @@ string EncoderImpl::ProcessLine(const string& input_line) {
         if (!t.empty() && t[0] == '"') {
             fail("Input seems to be sparse-encoded already");
         }
-        if (m.empty() || m != t) {
+        if (m.empty() || m.size() != t.size() || m != t) {
             // Entry doesn't match the last one recorded densely for this
             // column. Output any accumulated run of quotes in the current row,
             // then this new entry, and update the state appropriately.
@@ -174,30 +174,32 @@ string EncoderImpl::ProcessLine(const string& input_line) {
 // hard-called
 void EncoderImpl::Squeeze(vector<string>& line) {
     const auto& spec = line[8];
-    if (spec != "GT" && (spec.size() < 3 || spec.substr(0, 3) != "GT:")) {
+    if ((spec.size() >= 3 && spec.substr(0,3) != "GT:") && spec != "GT") {
         fail("cells don't start with genotype (GT)");
     }
 
     vector<string> fields, gt;
     for (int s = 9; s < line.size(); s++) {
-        // split the FORMAT fields in this cell
-        fields.clear();
-        split(line[s], ':', back_inserter(fields));
-        // split GT into the individual allele numbers
-        gt.clear();
-        split(fields[0], '/', back_inserter(gt));
-        if (gt.size() == 1) {
-            gt.clear();
-            split(fields[0], '|', back_inserter(gt));
-        }
-        if (gt.empty()) {
-            fail("empty cell");
+        auto& cell = line[s];
+        size_t p = 0;
+        for (; p < cell.size() && cell[p] != ':'; p++) {
+            switch (cell[p]) {
+                case '0':
+                case '.':
+                case '/':
+                case '|':
+                    break;
+                default:
+                    // some ALT allele called here -- this cell is not to be
+                    // touched.
+                    p = cell.size();
+            }
         }
 
-        // squeeze if all of the alleles are . or 0
-        if (std::all_of(gt.begin(), gt.end(),
-                        [](const string& f) { return f == "." || f == "0"; })) {
-            line[s] = fields[0];
+        if (p < cell.size()) {
+            // truncate cell to just the GT
+            assert(cell[p] == ':');
+            cell = cell.substr(0, p);
             ++stats_.squeezed_cells;
         }
     }
