@@ -51,8 +51,6 @@ protected:
     // state to be updated by derived classes
     uint64_t line_number_ = 0;
     transcode_stats stats_;
-
-    vector<char> buffer_; // a reusable buffer, to reduce allocations
 };
 
 class EncoderImpl : public TranscoderBase {
@@ -61,29 +59,30 @@ public:
         : checkpoint_period_(checkpoint_period), squeeze_(squeeze)
         {}
     EncoderImpl(const EncoderImpl&) = delete;
-    string ProcessLine(string& input_line) override;
+    const char* ProcessLine(char* input_line) override;
 
 private:
     void Squeeze(const vector<char*>& line);
 
     uint64_t checkpoint_period_ = 0, since_checkpoint_ = 0;
     bool squeeze_ = false;
-    vector<string> dense_entries_;
+
+    vector<string> dense_entries_; // main state memory
+    vector<char> buffer_; // reused to reduce allocations
 };
 
-string EncoderImpl::ProcessLine(string& input_line) {
+const char* EncoderImpl::ProcessLine(char* input_line) {
     ++line_number_;
     // Pass through header lines
-    if (input_line.empty() || input_line[0] == '#') {
+    if (*input_line == 0 || *input_line == '#') {
         return input_line;
     }
     ++stats_.lines;
 
     // Split the tab-separated line
-    size_t linesz = input_line.size();
     vector<char*> tokens;
     tokens.reserve(dense_entries_.size() + 9);
-    split(input_line, '\t', back_inserter(tokens));
+    size_t linesz = split(input_line, '\t', back_inserter(tokens));
     if (tokens.size() < 10) {
         fail("Invalid: fewer than 10 columns");
     }
@@ -179,7 +178,7 @@ string EncoderImpl::ProcessLine(string& input_line) {
         *cursor = 0;
         since_checkpoint_ = 0;
         ++stats_.checkpoints;
-        return string(&buffer_[0]);
+        return &buffer_[0];
     }
     ++since_checkpoint_;
 
@@ -192,7 +191,7 @@ string EncoderImpl::ProcessLine(string& input_line) {
         ++stats_.sparse99_lines;
     }
 
-    return string(&buffer_[0]);
+    return &buffer_[0];
 }
 
 // Truncate cells to GT:DP, and round DP down to a power of two, if
@@ -334,22 +333,23 @@ class DecoderImpl : public TranscoderBase {
 public:
     DecoderImpl() = default;
     DecoderImpl(const DecoderImpl&) = delete;
-    string ProcessLine(string& input_line) override;
+    const char* ProcessLine(char* input_line) override;
 
 private:
     vector<string> dense_entries_;
+    string buffer_;
 };
 
-string DecoderImpl::ProcessLine(string& input_line) {
+const char* DecoderImpl::ProcessLine(char *input_line) {
     ++line_number_;
     // Pass through header lines
-    if (input_line.empty() || input_line[0] == '#') {
+    if (*input_line == 0 || *input_line == '#') {
         return input_line;
     }
     ++stats_.lines;
 
     // Split the tab-separated line
-    vector<string> tokens;
+    vector<char*> tokens;
     tokens.reserve(dense_entries_.size());
     split(input_line, '\t', back_inserter(tokens));
     if (tokens.size() < 10) {
@@ -374,11 +374,10 @@ string DecoderImpl::ProcessLine(string& input_line) {
     // Iterate over the sparse columns
     uint64_t sparse_cells = (tokens.size()-9), dense_cursor = 0;
     for (uint64_t sparse_cursor = 0; sparse_cursor < sparse_cells; sparse_cursor++) {
-        const string& t = tokens[sparse_cursor+9];
-        if (t.empty()) {
+        const char* t = tokens[sparse_cursor+9];
+        if (*t == 0) {
             fail("empty cell");
-        }
-        if (t[0] != '"') {
+        } else if (*t != '"') {
             // Dense entry - remember it and copy it to the output
             // TODO: Perhaps fill QC fields with missing values (.) if they were squeezed out.
             //       The VCF spec does however say "Trailing fields can be dropped"
@@ -390,9 +389,9 @@ string DecoderImpl::ProcessLine(string& input_line) {
         } else {
             // Sparse entry - determine the run length
             uint64_t r = 1;
-            if (t.size() > 1) {
+            if (t[1]) { // strlen(t) > 1
                 errno = 0;
-                auto s = strtoul(t.substr(1).c_str(), nullptr, 10);
+                auto s = strtoull(t+1, nullptr, 10);
                 if (errno) {
                     fail("Undecodable sparse cell");
                 }
@@ -430,7 +429,8 @@ string DecoderImpl::ProcessLine(string& input_line) {
         ++stats_.sparse99_lines;
     }
 
-    return output_line.str();
+    buffer_ = output_line.str();
+    return buffer_.c_str();
 }
 
 unique_ptr<Transcoder> NewDecoder() {

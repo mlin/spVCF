@@ -128,7 +128,7 @@ int main(int argc, char *argv[]) {
     }
     string input_line;
     for (; getline(*input_stream, input_line); ) {
-        *output_stream << tc->ProcessLine(input_line) << '\n';
+        *output_stream << tc->ProcessLine(&input_line[0]) << '\n';
         if (input_stream->fail() || input_stream->bad() || !output_stream->good()) {
             throw runtime_error("I/O error");
         }
