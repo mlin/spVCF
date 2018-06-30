@@ -1,6 +1,7 @@
 {
     "files.associations": {
         "algorithm": "cpp",
-        "array": "cpp"
+        "array": "cpp",
+        "cmath": "cpp"
     }
 }

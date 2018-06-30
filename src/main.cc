@@ -9,16 +9,21 @@
 using namespace std;
 
 void usage() {
-    cout << "spvcf [options] [in.vcf|-]" << endl;
-    cout << "Read from standard input if input filename is empty or -" << endl;
-    cout << "Options:" << endl;
-    cout << "  -o,--output out.spvcf  Write to out.spvcf instead of standard output" << endl;
-    cout << "  -d,--decode            Decode from the sparse format instead of encoding to" << endl;
-    cout << "  -S,--squeeze           Discard QC measures from cells with no ALT allele called" << endl;
-    cout << "  -p,--checkpoint-period Ensure checkpoints (full dense row) at this period or less [1000]" << endl;
-    cout << "  -q,--quiet             Suppress statistics printed to standard error" << endl;
-    cout << "  -h,--help              Show this usage message" << endl;
-    cout << "source revision: " << GIT_REVISION << endl;
+    cout << "spvcf: Encode Project VCF to Sparse Project VCF or vice-versa. " << endl;
+    cout << "       " << GIT_REVISION << "    " << __TIMESTAMP__ << endl << endl
+         << "spvcf [options] [in.vcf|-]" << endl
+         << "Reads VCF text from standard input if filename is empty or -" << endl << endl
+         << "Options:" << endl
+         << "  -o,--output out.spvcf  Write to out.spvcf instead of standard output" << endl
+         << "  -d,--decode            Decode from the sparse format instead of encoding to" << endl
+         << "  -p,--period P          Ensure checkpoints (full dense rows) at this period or less (default: 1000)" << endl
+         << "  -q,--quiet             Suppress statistics printed to standard error" << endl
+         << "  -h,--help              Show this usage message" << endl << endl
+         << "Lossy transformation to increase compression: " << endl
+         << "  -S,--squeeze           Truncate cells to GT:DP, with DP rounded down to a power of two, if: " << endl
+         << "                         - AD is present and indicates zero read depth for alternate alleles; OR" << endl
+         << "                         - VR is present and zero" << endl
+         << "                         Reorders fields within all cells."<< endl << endl;
 }
 
 int main(int argc, char *argv[]) {
@@ -33,7 +38,7 @@ int main(int argc, char *argv[]) {
         {"help", no_argument, 0, 'h'},
         {"decode", no_argument, 0, 'd'},
         {"squeeze", no_argument, 0, 'S'},
-        {"checkpoint-period", required_argument, 0, 'p'},
+        {"period", required_argument, 0, 'p'},
         {"quiet", no_argument, 0, 'q'},
         {"output", required_argument, 0, 'o'},
         {0, 0, 0, 0}
@@ -56,7 +61,7 @@ int main(int argc, char *argv[]) {
                 errno=0;
                 checkpoint_period = strtoull(optarg, nullptr, 10);
                 if (errno) {
-                    cerr << "spvcf: couldn't parse --checkpoint-period" << endl;
+                    cerr << "spvcf: couldn't parse --period" << endl;
                     return -1;
                 }
                 break;
