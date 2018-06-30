@@ -4,7 +4,8 @@
 #include <algorithm>
 #include <cstdint>
 #include <stdexcept>
-#include <stdlib.h>
+#include <cmath>
+#include <cstdlib>
 #include <assert.h>
 
 using namespace std;
@@ -43,7 +44,9 @@ protected:
 
 class EncoderImpl : public TranscoderBase {
 public:
-    EncoderImpl(uint64_t checkpoint_period, bool squeeze) : checkpoint_period_(checkpoint_period), squeeze_(squeeze) {}
+    EncoderImpl(uint64_t checkpoint_period, bool squeeze)
+        : checkpoint_period_(checkpoint_period), squeeze_(squeeze)
+        {}
     EncoderImpl(const EncoderImpl&) = delete;
     string ProcessLine(const string& input_line) override;
 
@@ -170,38 +173,131 @@ string EncoderImpl::ProcessLine(const string& input_line) {
     return output_line.str();
 }
 
-// Discard QC measures (FORMAT fields) for entries which have no ALT allele
-// hard-called
+// Truncate cells to GT:DP, and round DP down to a power of two, if
+//   - AD is present and indicates zero read depth for alternate alleles;
+//   - VR is present and zero
+// All cells (and the FORMAT specification) are reordered to begin with
+// GT:DP, followed by any remaining fields.
 void EncoderImpl::Squeeze(vector<string>& line) {
-    const auto& spec = line[8];
-    if ((spec.size() >= 3 && spec.substr(0,3) != "GT:") && spec != "GT") {
+    // parse the FORMAT field
+    vector<string> format;
+    split(line[8], ':', back_inserter(format));
+
+    // locate fields of interest
+    if (format[0] != "GT") {
         fail("cells don't start with genotype (GT)");
     }
+    int iDP = -1;
+    auto pDP = find(format.begin(), format.end(), "DP");
+    if (pDP != format.end()) {
+        iDP = pDP - format.begin();
+        assert (iDP > 0 && iDP < format.size());
+    }
+    int iAD = -1;
+    auto pAD = find(format.begin(), format.end(), "AD");
+    if (pAD != format.end()) {
+        iAD = pAD - format.begin();
+        assert (iAD > 0 && iAD < format.size());
+    }
+    int iVR = -1;
+    auto pVR = find(format.begin(), format.end(), "VR");
+    if (pVR != format.end()) {
+        iVR = pVR - format.begin();
+        assert (iVR > 0 && iVR < format.size());
+    }
 
-    vector<string> fields, gt;
+    // compute the new field order and update FORMAT
+    vector<size_t> permutation;
+    permutation.push_back(0);
+    if (iDP >= 1) {
+        permutation.push_back(iDP);
+    }
+    for (size_t i = 1; i < format.size(); i++) {
+        if (i != iDP) {
+            permutation.push_back(i);
+        }
+    }
+    ostringstream new_format;
+    new_format << "GT";
+    for (const auto i : permutation) {
+        if (i > 0) {
+            new_format << ":" << format[i];
+        }
+    }
+    line[8] = new_format.str();
+
+    // proceed through all cells
     for (int s = 9; s < line.size(); s++) {
+        // parse individual entries
         auto& cell = line[s];
-        size_t p = 0;
-        for (; p < cell.size() && cell[p] != ':'; p++) {
-            switch (cell[p]) {
-                case '0':
-                case '.':
-                case '/':
-                case '|':
-                    break;
-                default:
-                    // some ALT allele called here -- this cell is not to be
-                    // touched.
-                    p = cell.size();
+        vector<string> entries;
+        split(cell, ':', back_inserter(entries));
+        if (entries.empty()) {
+            fail("empty cell");
+        }
+
+        // decide if conditions exist to truncate this cell to GT:DP
+        bool truncate = false;
+        if (iAD > 0 && entries.size() > iAD) {
+            // does AD have any non-zero values after the first value?
+            const auto& AD = entries[iAD];
+            auto c = AD.find(',');
+            if (c != string::npos) {
+                for (; c < AD.size(); c++) {
+                    if (AD[c] != '0' && AD[c] != ',') {
+                        break;
+                    }
+                }
+                if (c == AD.size()) {
+                    truncate = true;
+                }
+            }
+        }
+        if (iVR > 0 && entries.size() >= iVR) {
+            // is VR zero?
+            if (entries[iVR] == "0") {
+                truncate = true;
             }
         }
 
-        if (p < cell.size()) {
-            // truncate cell to just the GT
-            assert(cell[p] == ':');
-            cell = cell.substr(0, p);
-            ++stats_.squeezed_cells;
+        // construct revised cell
+        ostringstream new_cell;
+        new_cell << entries[0]; // GT
+        if (iDP > 0) {
+            assert(permutation[1] == iDP);
+            if (entries.size() > iDP) {
+                if (truncate) {
+                    // round down the DP value
+                    errno = 0;
+                    uint64_t DP = strtoull(entries[iDP].c_str(), nullptr, 10);
+                    if (errno) {
+                        fail("Couldn't parse DP");
+                    }
+                    uint64_t rDP = DP > 0 ? uint64_t(pow(2, floor(log2(DP)))) : 0;
+                    assert(rDP <= DP && (DP == 0 || DP < rDP*2));
+                    new_cell << ':' << rDP;
+                } else {
+                    new_cell << ':' << entries[iDP];
+                }
+            } else {
+                new_cell << ":.";
+            }
         }
+        if (truncate) {
+            ++stats_.squeezed_cells;
+        } else {
+            // copy over remaining fields
+            for (size_t i = 2; i < permutation.size(); i++) {
+                new_cell << ':';
+                if (entries.size() > permutation[i]) {
+                    new_cell << entries[permutation[i]];
+                } else {
+                    new_cell << '.';
+                }
+            }
+        }
+
+        cell = new_cell.str();
     }
 }
 

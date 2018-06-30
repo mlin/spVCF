@@ -31,7 +31,7 @@ is "$(cat $D/small.vcf | grep -v ^# | sha256sum)" \
 
 "$EXE" -S -p 500 -o $D/small.squeezed.spvcf $D/small.vcf
 is "$?" "0" "squeeze"
-is "$(cat $D/small.squeezed.spvcf | wc -c)" "13558972" "squeezed output size"
+is "$(cat $D/small.squeezed.spvcf | wc -c)" "18647725" "squeezed output size"
 
 "$EXE" -d -q -o $D/small.squeezed.roundtrip.vcf $D/small.squeezed.spvcf
 is "$?" "0" "squeezed roundtrip decode"
