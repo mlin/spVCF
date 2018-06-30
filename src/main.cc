@@ -126,7 +126,8 @@ int main(int argc, char *argv[]) {
     } else {
         tc = spVCF::NewEncoder(checkpoint_period, squeeze);
     }
-    for (string input_line; getline(*input_stream, input_line); ) {
+    string input_line;
+    for (; getline(*input_stream, input_line); ) {
         *output_stream << tc->ProcessLine(input_line) << '\n';
         if (input_stream->fail() || input_stream->bad() || !output_stream->good()) {
             throw runtime_error("I/O error");

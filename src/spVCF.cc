@@ -51,6 +51,8 @@ protected:
     // state to be updated by derived classes
     uint64_t line_number_ = 0;
     transcode_stats stats_;
+
+    vector<char> buffer_; // a reusable buffer, to reduce allocations
 };
 
 class EncoderImpl : public TranscoderBase {
@@ -78,6 +80,7 @@ string EncoderImpl::ProcessLine(string& input_line) {
     ++stats_.lines;
 
     // Split the tab-separated line
+    size_t linesz = input_line.size();
     vector<char*> tokens;
     tokens.reserve(dense_entries_.size() + 9);
     split(input_line, '\t', back_inserter(tokens));
@@ -103,11 +106,16 @@ string EncoderImpl::ProcessLine(string& input_line) {
         Squeeze(tokens);
     }
 
+    if (buffer_.size() < linesz+1) {
+        // ASSUMES new < old line length!
+        buffer_.resize(2*linesz+1);
+    }
+    char *cursor = &buffer_[0];
+
     // Pass through first nine columns
-    ostringstream output_line;
-    output_line << tokens[0];
+    cursor = stpcpy(cursor, tokens[0]);
     for (int i = 1; i < 9; i++) {
-        output_line << '\t' << tokens[i];
+        *cursor++ = '\t'; cursor = stpcpy(cursor, tokens[i]);
     }
 
     uint64_t quote_run = 0; // current run-length of quotes across the row
@@ -126,14 +134,14 @@ string EncoderImpl::ProcessLine(string& input_line) {
             // column. Output any accumulated run of quotes in the current row,
             // then this new entry, and update the state appropriately.
             if (quote_run) {
-                output_line << '\t' << '"';
+                cursor = stpcpy(cursor, "\t\"");
                 if (quote_run > 1) {
-                    output_line << quote_run;
+                    cursor = stpcpy(cursor, to_string(quote_run).c_str());
                 }
                 quote_run = 0;
                 ++sparse_cells;
             }
-            output_line << '\t' << t;
+            *cursor++ = '\t'; cursor = stpcpy(cursor, t);
             ++sparse_cells;
             m = t;
         } else {
@@ -143,12 +151,13 @@ string EncoderImpl::ProcessLine(string& input_line) {
     }
     // Output final run of quotes
     if (quote_run) {
-        output_line << '\t' << '"';
+        cursor = stpcpy(cursor, "\t\"");
         if (quote_run > 1) {
-            output_line << quote_run;
+            cursor = stpcpy(cursor, to_string(quote_run).c_str());
         }
         ++sparse_cells;
     }
+    *cursor = 0;
 
     // CHECKPOINT -- return a densely-encoded row -- if we've hit the specified
     // period OR if we've passed half the period and this line is mostly dense
@@ -156,20 +165,21 @@ string EncoderImpl::ProcessLine(string& input_line) {
     if (checkpoint_period_ > 0 &&
         (since_checkpoint_ >= checkpoint_period_ ||
          (since_checkpoint_*2 >= checkpoint_period_ && sparse_cells*2 >= N))) {
-        ostringstream cp;
+        cursor = &buffer_[0];
         for (int t = 0; t < tokens.size(); t++) {
             if (t > 0) {
-                cp << '\t';
+                *cursor++ = '\t';
             }
-            cp << tokens[t];
+            cursor = stpcpy(cursor, tokens[t]);
             if (t >= 9) {
                 dense_entries_[t-9] = tokens[t];
             }
             assert(tokens.size() == stats_.N+9);
         }
+        *cursor = 0;
         since_checkpoint_ = 0;
         ++stats_.checkpoints;
-        return cp.str();
+        return string(&buffer_[0]);
     }
     ++since_checkpoint_;
 
@@ -182,7 +192,7 @@ string EncoderImpl::ProcessLine(string& input_line) {
         ++stats_.sparse99_lines;
     }
 
-    return output_line.str();
+    return string(&buffer_[0]);
 }
 
 // Truncate cells to GT:DP, and round DP down to a power of two, if
