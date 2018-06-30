@@ -56,6 +56,7 @@ private:
     uint64_t checkpoint_period_ = 0, since_checkpoint_ = 0;
     bool squeeze_ = false;
     vector<string> dense_entries_;
+    vector<string> tokens_;
 };
 
 string EncoderImpl::ProcessLine(const string& input_line) {
@@ -67,8 +68,8 @@ string EncoderImpl::ProcessLine(const string& input_line) {
     ++stats_.lines;
 
     // Split the tab-separated line
-    vector<string> tokens;
-    tokens.reserve(dense_entries_.size());
+    vector<string>& tokens = tokens_;
+    tokens_.clear();
     split(input_line, '\t', back_inserter(tokens));
     if (tokens.size() < 10) {
         fail("Invalid: fewer than 10 columns");
@@ -227,10 +228,11 @@ void EncoderImpl::Squeeze(vector<string>& line) {
     line[8] = new_format.str();
 
     // proceed through all cells
+    vector<string> entries;
     for (int s = 9; s < line.size(); s++) {
+        entries.clear();
         // parse individual entries
         auto& cell = line[s];
-        vector<string> entries;
         split(cell, ':', back_inserter(entries));
         if (entries.empty()) {
             fail("empty cell");
