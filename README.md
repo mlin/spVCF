@@ -32,16 +32,21 @@ ctest -V
 The `spvcf` executable encodes an existing pVCF to spVCF, or conversely decodes spVCF to pVCF. The input and output streams are uncompressed VCF text, so you may wish to arrange a pipe with [de]compression programs like `bgzip`.
 
 ```
-$ ./spvcf -h
 spvcf [options] [in.vcf|-]
-Read from standard input if input filename is empty or -
+Reads VCF text from standard input if filename is empty or -
+
 Options:
   -o,--output out.spvcf  Write to out.spvcf instead of standard output
   -d,--decode            Decode from the sparse format instead of encoding to
-  -S,--squeeze           Discard QC measures from cells with no ALT allele called
-  -p,--checkpoint-period Ensure checkpoints (full dense row) at this period or less [1000]
+  -p,--period P          Ensure checkpoints (full dense rows) at this period or less (default: 1000)
   -q,--quiet             Suppress statistics printed to standard error
   -h,--help              Show this usage message
+
+Lossy transformation to increase compression:
+  -S,--squeeze           Truncate cells to GT:DP, with DP rounded down to a power of two, if:
+                         - AD is present and indicates zero read depth for alternate alleles; OR
+                         - VR is present and zero
+                         Reorders fields within all cells.
 ```
 
 Examples:
