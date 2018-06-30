@@ -39,4 +39,4 @@ is "$(cat $D/small.vcf | grep -v ^# | sed -r 's/(\t[^:]+):[^\t]+/\1/g' | sha256s
    "$(cat $D/small.squeezed.roundtrip.vcf | grep -v ^# | sed -r 's/(\t[^:]+):[^\t]+/\1/g' | sha256sum)" \
    "squeezed roundtrip GT fidelity"
 
-rm -rf $D
+#rm -rf $D
