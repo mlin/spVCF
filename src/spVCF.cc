@@ -6,20 +6,28 @@
 #include <stdexcept>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <assert.h>
 
 using namespace std;
 
 namespace spVCF {
 
-// https://stackoverflow.com/a/236803
+// split s on delim. s is damaged by side-effect
 template<typename Out>
-void split(const std::string &s, char delim, Out result) {
-    std::stringstream ss(s);
-    std::string item;
-    while (std::getline(ss, item, delim)) {
-        *(result++) = move(item);
+void split(char *s, char delim, Out result) {
+    string delims("\n");
+    delims[0] = delim;
+    char *token = strsep(&s, delims.c_str());
+    while (token) {
+        *(result++) = token;
+        token = strsep(&s, delims.c_str());
     }
+}
+
+template<typename Out>
+inline void split(string& s, char delim, Out result) {
+    split(&s[0], delim, result);
 }
 
 // Base class for encoder/decoder with common state & error-handling
@@ -48,18 +56,17 @@ public:
         : checkpoint_period_(checkpoint_period), squeeze_(squeeze)
         {}
     EncoderImpl(const EncoderImpl&) = delete;
-    string ProcessLine(const string& input_line) override;
+    string ProcessLine(string& input_line) override;
 
 private:
-    void Squeeze(vector<string>& line);
+    void Squeeze(vector<const char*>& line, vector<string>& squeezed_line);
 
     uint64_t checkpoint_period_ = 0, since_checkpoint_ = 0;
     bool squeeze_ = false;
     vector<string> dense_entries_;
-    vector<string> tokens_;
 };
 
-string EncoderImpl::ProcessLine(const string& input_line) {
+string EncoderImpl::ProcessLine(string& input_line) {
     ++line_number_;
     // Pass through header lines
     if (input_line.empty() || input_line[0] == '#') {
@@ -68,8 +75,8 @@ string EncoderImpl::ProcessLine(const string& input_line) {
     ++stats_.lines;
 
     // Split the tab-separated line
-    vector<string>& tokens = tokens_;
-    tokens_.clear();
+    vector<const char*> tokens;
+    tokens.reserve(dense_entries_.size() + 9);
     split(input_line, '\t', back_inserter(tokens));
     if (tokens.size() < 10) {
         fail("Invalid: fewer than 10 columns");
@@ -81,7 +88,7 @@ string EncoderImpl::ProcessLine(const string& input_line) {
         stats_.N = N;
     } else if (dense_entries_.size() != N) { // Subsequent line -- check expected # columns
         for (int i = 9; i < tokens.size(); i++) {
-            const string& t = tokens[i];
+            const string t = tokens[i];
             if (!t.empty() && t[0] == '"') {
                 fail("Input seems to be sparse-encoded already");
             }
@@ -89,8 +96,13 @@ string EncoderImpl::ProcessLine(const string& input_line) {
         fail("Inconsistent number of samples");
     }
 
+    vector<string> tokenspp;
     if (squeeze_) {
-        Squeeze(tokens);
+        Squeeze(tokens, tokenspp);
+        tokens.clear();
+        for (const auto& s : tokenspp) {
+            tokens.push_back(s.c_str());
+        }
     }
 
     // Pass through first nine columns
@@ -106,11 +118,12 @@ string EncoderImpl::ProcessLine(const string& input_line) {
     // recorded densely.
     for (uint64_t s = 0; s < N; s++) {
         string& m = dense_entries_[s];
-        const string& t = tokens[s+9];
-        if (!t.empty() && t[0] == '"') {
+        const char* t = tokens[s+9];
+        const size_t tlen = strlen(t);
+        if (*t && *t == '"') {
             fail("Input seems to be sparse-encoded already");
         }
-        if (m.empty() || m.size() != t.size() || m != t) {
+        if (m.empty() || m.size() != tlen || strcmp(m.c_str(), t) != 0) {
             // Entry doesn't match the last one recorded densely for this
             // column. Output any accumulated run of quotes in the current row,
             // then this new entry, and update the state appropriately.
@@ -179,7 +192,13 @@ string EncoderImpl::ProcessLine(const string& input_line) {
 //   - VR is present and zero
 // All cells (and the FORMAT specification) are reordered to begin with
 // GT:DP, followed by any remaining fields.
-void EncoderImpl::Squeeze(vector<string>& line) {
+void EncoderImpl::Squeeze(vector<const char*>& line_in, vector<string>& line) {
+    line.clear();
+    line.reserve(line_in.size());
+    for (const char* s : line_in) {
+        line.push_back(move(string(s)));
+    }
+
     // parse the FORMAT field
     vector<string> format;
     split(line[8], ':', back_inserter(format));
@@ -228,7 +247,7 @@ void EncoderImpl::Squeeze(vector<string>& line) {
     line[8] = new_format.str();
 
     // proceed through all cells
-    vector<string> entries;
+    vector<char*> entries;
     for (int s = 9; s < line.size(); s++) {
         entries.clear();
         // parse individual entries
@@ -242,22 +261,17 @@ void EncoderImpl::Squeeze(vector<string>& line) {
         bool truncate = false;
         if (iAD > 0 && entries.size() > iAD) {
             // does AD have any non-zero values after the first value?
-            const auto& AD = entries[iAD];
-            auto c = AD.find(',');
-            if (c != string::npos) {
-                for (; c < AD.size(); c++) {
-                    if (AD[c] != '0' && AD[c] != ',') {
-                        break;
-                    }
-                }
-                if (c == AD.size()) {
+            char *c = strchr(entries[iAD], ',');
+            if (c) {
+                for (; (*c == '0' || *c == ','); c++);
+                if (*c == 0) {
                     truncate = true;
                 }
             }
         }
         if (iVR > 0 && entries.size() >= iVR) {
             // is VR zero?
-            if (entries[iVR] == "0") {
+            if (strcmp(entries[iVR], "0") == 0) {
                 truncate = true;
             }
         }
@@ -271,7 +285,7 @@ void EncoderImpl::Squeeze(vector<string>& line) {
                 if (truncate) {
                     // round down the DP value
                     errno = 0;
-                    uint64_t DP = strtoull(entries[iDP].c_str(), nullptr, 10);
+                    uint64_t DP = strtoull(entries[iDP], nullptr, 10);
                     if (errno) {
                         fail("Couldn't parse DP");
                     }
@@ -311,13 +325,13 @@ class DecoderImpl : public TranscoderBase {
 public:
     DecoderImpl() = default;
     DecoderImpl(const DecoderImpl&) = delete;
-    string ProcessLine(const string& input_line) override;
+    string ProcessLine(string& input_line) override;
 
 private:
     vector<string> dense_entries_;
 };
 
-string DecoderImpl::ProcessLine(const string& input_line) {
+string DecoderImpl::ProcessLine(string& input_line) {
     ++line_number_;
     // Pass through header lines
     if (input_line.empty() || input_line[0] == '#') {
