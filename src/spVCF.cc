@@ -125,11 +125,10 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
     for (uint64_t s = 0; s < N; s++) {
         string& m = dense_entries_[s];
         const char* t = tokens[s+9];
-        const size_t tlen = strlen(t);
         if (*t && *t == '"') {
             fail("Input seems to be sparse-encoded already");
         }
-        if (m.empty() || m.size() != tlen || strcmp(m.c_str(), t) != 0) {
+        if (m.empty() || strcmp(m.c_str(), t) != 0) {
             // Entry doesn't match the last one recorded densely for this
             // column. Output any accumulated run of quotes in the current row,
             // then this new entry, and update the state appropriately.
