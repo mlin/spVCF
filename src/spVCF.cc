@@ -69,6 +69,7 @@ private:
 
     vector<string> dense_entries_; // main state memory
     vector<char> buffer_; // reused to reduce allocations
+    vector<string> roundDP_table_;
 };
 
 const char* EncoderImpl::ProcessLine(char* input_line) {
@@ -199,7 +200,20 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
 //   - VR is present and zero
 // All cells (and the FORMAT specification) are reordered to begin with
 // GT:DP, followed by any remaining fields.
+//
+// Each element of line is modified in-place.
 void EncoderImpl::Squeeze(const vector<char*>& line) {
+    if (roundDP_table_.empty()) {
+        // precompute a lookup table of DP values, rounded down to a power of
+        // two and stringified
+        roundDP_table_.push_back("0");
+        for (uint64_t DP = 1; DP < 10000; DP++) {
+            uint64_t rDP = uint64_t(pow(2, floor(log2(DP))));
+            assert(rDP <= DP && (DP == 0 || DP < rDP*2));
+            roundDP_table_.push_back(to_string(rDP));
+        }
+    }
+
     // parse the FORMAT field
     vector<string> format;
     split(line[8], ':', back_inserter(format));
@@ -281,7 +295,7 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
 
         // construct revised cell, beginning with GT:DP, then any remaining fields
         if (buffer.size() < cellsz+1) {
-            buffer.resize(2*cellsz+1);
+            buffer.resize(2*cellsz+2);
         }
         char* cursor = &buffer[0];
         cursor = stpcpy(cursor, entries[0]); // GT
@@ -295,9 +309,14 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
                     if (errno) {
                         fail("Couldn't parse DP");
                     }
-                    uint64_t rDP = DP > 0 ? uint64_t(pow(2, floor(log2(DP)))) : 0;
-                    assert(rDP <= DP && (DP == 0 || DP < rDP*2));
-                    *cursor++ = ':'; cursor = stpcpy(cursor, to_string(rDP).c_str());
+                    *cursor++ = ':';
+                    if (DP < roundDP_table_.size()) {
+                        cursor = stpcpy(cursor, roundDP_table_[DP].c_str());
+                    } else {
+                        uint64_t rDP = pow(2, floor(log2(DP)));
+                        assert(rDP <= DP && (DP == 0 || DP < rDP*2));
+                        cursor = stpcpy(cursor, to_string(rDP).c_str());
+                    }
                 } else {
                     *cursor++ = ':'; cursor = stpcpy(cursor, entries[iDP]);
                 }
