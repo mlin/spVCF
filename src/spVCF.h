@@ -17,7 +17,7 @@ struct transcode_stats {
 
 class Transcoder {
 public:
-    virtual std::string ProcessLine(const std::string& input_line) = 0;
+    virtual const char* ProcessLine(char* input_line) = 0; // input_line is consumed (damaged)
     virtual transcode_stats Stats() = 0;
 };
 std::unique_ptr<Transcoder> NewEncoder(uint64_t checkpoint_period, bool squeeze);

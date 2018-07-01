@@ -6,20 +6,31 @@
 #include <stdexcept>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <assert.h>
 
 using namespace std;
 
 namespace spVCF {
 
-// https://stackoverflow.com/a/236803
+// split s on delim & return strlen(s). s is damaged by side-effect
 template<typename Out>
-void split(const std::string &s, char delim, Out result) {
-    std::stringstream ss(s);
-    std::string item;
-    while (std::getline(ss, item, delim)) {
-        *(result++) = move(item);
+size_t split(char *s, char delim, Out result) {
+    string delims("\n");
+    delims[0] = delim;
+    char *cursor = s;
+    char *token = strsep(&cursor, delims.c_str()), *last_token = nullptr;
+    while (token) {
+        *(result++) = token;
+        last_token = token;
+        token = strsep(&cursor, delims.c_str());
     }
+    return last_token ? (last_token + strlen(last_token) - s) : 0;
+}
+
+template<typename Out>
+size_t split(string& s, char delim, Out result) {
+    return split(&s[0], delim, result);
 }
 
 // Base class for encoder/decoder with common state & error-handling
@@ -48,28 +59,31 @@ public:
         : checkpoint_period_(checkpoint_period), squeeze_(squeeze)
         {}
     EncoderImpl(const EncoderImpl&) = delete;
-    string ProcessLine(const string& input_line) override;
+    const char* ProcessLine(char* input_line) override;
 
 private:
-    void Squeeze(vector<string>& line);
+    void Squeeze(const vector<char*>& line);
 
     uint64_t checkpoint_period_ = 0, since_checkpoint_ = 0;
     bool squeeze_ = false;
-    vector<string> dense_entries_;
+
+    vector<string> dense_entries_; // main state memory
+    vector<char> buffer_; // reused to reduce allocations
+    vector<string> roundDP_table_;
 };
 
-string EncoderImpl::ProcessLine(const string& input_line) {
+const char* EncoderImpl::ProcessLine(char* input_line) {
     ++line_number_;
     // Pass through header lines
-    if (input_line.empty() || input_line[0] == '#') {
+    if (*input_line == 0 || *input_line == '#') {
         return input_line;
     }
     ++stats_.lines;
 
     // Split the tab-separated line
-    vector<string> tokens;
-    tokens.reserve(dense_entries_.size());
-    split(input_line, '\t', back_inserter(tokens));
+    vector<char*> tokens;
+    tokens.reserve(dense_entries_.size() + 9);
+    size_t linesz = split(input_line, '\t', back_inserter(tokens));
     if (tokens.size() < 10) {
         fail("Invalid: fewer than 10 columns");
     }
@@ -80,7 +94,7 @@ string EncoderImpl::ProcessLine(const string& input_line) {
         stats_.N = N;
     } else if (dense_entries_.size() != N) { // Subsequent line -- check expected # columns
         for (int i = 9; i < tokens.size(); i++) {
-            const string& t = tokens[i];
+            const string t = tokens[i];
             if (!t.empty() && t[0] == '"') {
                 fail("Input seems to be sparse-encoded already");
             }
@@ -92,11 +106,16 @@ string EncoderImpl::ProcessLine(const string& input_line) {
         Squeeze(tokens);
     }
 
+    if (buffer_.size() < linesz+1) {
+        // ASSUMES new < old line length!
+        buffer_.resize(2*linesz+1);
+    }
+    char *cursor = &buffer_[0];
+
     // Pass through first nine columns
-    ostringstream output_line;
-    output_line << tokens[0];
+    cursor = stpcpy(cursor, tokens[0]);
     for (int i = 1; i < 9; i++) {
-        output_line << '\t' << tokens[i];
+        *cursor++ = '\t'; cursor = stpcpy(cursor, tokens[i]);
     }
 
     uint64_t quote_run = 0; // current run-length of quotes across the row
@@ -105,23 +124,24 @@ string EncoderImpl::ProcessLine(const string& input_line) {
     // recorded densely.
     for (uint64_t s = 0; s < N; s++) {
         string& m = dense_entries_[s];
-        const string& t = tokens[s+9];
-        if (!t.empty() && t[0] == '"') {
+        const char* t = tokens[s+9];
+        const size_t tlen = strlen(t);
+        if (*t && *t == '"') {
             fail("Input seems to be sparse-encoded already");
         }
-        if (m.empty() || m.size() != t.size() || m != t) {
+        if (m.empty() || m.size() != tlen || strcmp(m.c_str(), t) != 0) {
             // Entry doesn't match the last one recorded densely for this
             // column. Output any accumulated run of quotes in the current row,
             // then this new entry, and update the state appropriately.
             if (quote_run) {
-                output_line << '\t' << '"';
+                cursor = stpcpy(cursor, "\t\"");
                 if (quote_run > 1) {
-                    output_line << quote_run;
+                    cursor = stpcpy(cursor, to_string(quote_run).c_str());
                 }
                 quote_run = 0;
                 ++sparse_cells;
             }
-            output_line << '\t' << t;
+            *cursor++ = '\t'; cursor = stpcpy(cursor, t);
             ++sparse_cells;
             m = t;
         } else {
@@ -131,12 +151,13 @@ string EncoderImpl::ProcessLine(const string& input_line) {
     }
     // Output final run of quotes
     if (quote_run) {
-        output_line << '\t' << '"';
+        cursor = stpcpy(cursor, "\t\"");
         if (quote_run > 1) {
-            output_line << quote_run;
+            cursor = stpcpy(cursor, to_string(quote_run).c_str());
         }
         ++sparse_cells;
     }
+    *cursor = 0;
 
     // CHECKPOINT -- return a densely-encoded row -- if we've hit the specified
     // period OR if we've passed half the period and this line is mostly dense
@@ -144,20 +165,21 @@ string EncoderImpl::ProcessLine(const string& input_line) {
     if (checkpoint_period_ > 0 &&
         (since_checkpoint_ >= checkpoint_period_ ||
          (since_checkpoint_*2 >= checkpoint_period_ && sparse_cells*2 >= N))) {
-        ostringstream cp;
+        cursor = &buffer_[0];
         for (int t = 0; t < tokens.size(); t++) {
             if (t > 0) {
-                cp << '\t';
+                *cursor++ = '\t';
             }
-            cp << tokens[t];
+            cursor = stpcpy(cursor, tokens[t]);
             if (t >= 9) {
                 dense_entries_[t-9] = tokens[t];
             }
             assert(tokens.size() == stats_.N+9);
         }
+        *cursor = 0;
         since_checkpoint_ = 0;
         ++stats_.checkpoints;
-        return cp.str();
+        return &buffer_[0];
     }
     ++since_checkpoint_;
 
@@ -170,7 +192,7 @@ string EncoderImpl::ProcessLine(const string& input_line) {
         ++stats_.sparse99_lines;
     }
 
-    return output_line.str();
+    return &buffer_[0];
 }
 
 // Truncate cells to GT:DP, and round DP down to a power of two, if
@@ -178,7 +200,20 @@ string EncoderImpl::ProcessLine(const string& input_line) {
 //   - VR is present and zero
 // All cells (and the FORMAT specification) are reordered to begin with
 // GT:DP, followed by any remaining fields.
-void EncoderImpl::Squeeze(vector<string>& line) {
+//
+// Each element of line is modified in-place.
+void EncoderImpl::Squeeze(const vector<char*>& line) {
+    if (roundDP_table_.empty()) {
+        // precompute a lookup table of DP values, rounded down to a power of
+        // two and stringified
+        roundDP_table_.push_back("0");
+        for (uint64_t DP = 1; DP < 10000; DP++) {
+            uint64_t rDP = uint64_t(pow(2, floor(log2(DP))));
+            assert(rDP <= DP && (DP == 0 || DP < rDP*2));
+            roundDP_table_.push_back(to_string(rDP));
+        }
+    }
+
     // parse the FORMAT field
     vector<string> format;
     split(line[8], ':', back_inserter(format));
@@ -224,14 +259,17 @@ void EncoderImpl::Squeeze(vector<string>& line) {
             new_format << ":" << format[i];
         }
     }
-    line[8] = new_format.str();
+    strcpy(line[8], new_format.str().c_str()); // ASSUMES new <= old format len!
+
+    // reusable buffers to save allocations in upcoming inner loop
+    vector<char> buffer;
+    vector<char*> entries;
 
     // proceed through all cells
     for (int s = 9; s < line.size(); s++) {
+        entries.clear();
         // parse individual entries
-        auto& cell = line[s];
-        vector<string> entries;
-        split(cell, ':', back_inserter(entries));
+        size_t cellsz = split(line[s], ':', back_inserter(entries));
         if (entries.empty()) {
             fail("empty cell");
         }
@@ -240,47 +278,50 @@ void EncoderImpl::Squeeze(vector<string>& line) {
         bool truncate = false;
         if (iAD > 0 && entries.size() > iAD) {
             // does AD have any non-zero values after the first value?
-            const auto& AD = entries[iAD];
-            auto c = AD.find(',');
-            if (c != string::npos) {
-                for (; c < AD.size(); c++) {
-                    if (AD[c] != '0' && AD[c] != ',') {
-                        break;
-                    }
-                }
-                if (c == AD.size()) {
+            char *c = strchr(entries[iAD], ',');
+            if (c) {
+                for (; (*c == '0' || *c == ','); c++);
+                if (*c == 0) {
                     truncate = true;
                 }
             }
         }
         if (iVR > 0 && entries.size() >= iVR) {
             // is VR zero?
-            if (entries[iVR] == "0") {
+            if (strcmp(entries[iVR], "0") == 0) {
                 truncate = true;
             }
         }
 
-        // construct revised cell
-        ostringstream new_cell;
-        new_cell << entries[0]; // GT
+        // construct revised cell, beginning with GT:DP, then any remaining fields
+        if (buffer.size() < cellsz+1) {
+            buffer.resize(2*cellsz+2);
+        }
+        char* cursor = &buffer[0];
+        cursor = stpcpy(cursor, entries[0]); // GT
         if (iDP > 0) {
             assert(permutation[1] == iDP);
             if (entries.size() > iDP) {
                 if (truncate) {
                     // round down the DP value
                     errno = 0;
-                    uint64_t DP = strtoull(entries[iDP].c_str(), nullptr, 10);
+                    uint64_t DP = strtoull(entries[iDP], nullptr, 10);
                     if (errno) {
                         fail("Couldn't parse DP");
                     }
-                    uint64_t rDP = DP > 0 ? uint64_t(pow(2, floor(log2(DP)))) : 0;
-                    assert(rDP <= DP && (DP == 0 || DP < rDP*2));
-                    new_cell << ':' << rDP;
+                    *cursor++ = ':';
+                    if (DP < roundDP_table_.size()) {
+                        cursor = stpcpy(cursor, roundDP_table_[DP].c_str());
+                    } else {
+                        uint64_t rDP = pow(2, floor(log2(DP)));
+                        assert(rDP <= DP && (DP == 0 || DP < rDP*2));
+                        cursor = stpcpy(cursor, to_string(rDP).c_str());
+                    }
                 } else {
-                    new_cell << ':' << entries[iDP];
+                    *cursor++ = ':'; cursor = stpcpy(cursor, entries[iDP]);
                 }
             } else {
-                new_cell << ":.";
+                cursor = stpcpy(cursor, ":.");
             }
         }
         if (truncate) {
@@ -288,16 +329,18 @@ void EncoderImpl::Squeeze(vector<string>& line) {
         } else {
             // copy over remaining fields
             for (size_t i = 2; i < permutation.size(); i++) {
-                new_cell << ':';
+                *cursor++ = ':';
                 if (entries.size() > permutation[i]) {
-                    new_cell << entries[permutation[i]];
+                    cursor = stpcpy(cursor, entries[permutation[i]]);
                 } else {
-                    new_cell << '.';
+                    *cursor++ = '.';
                 }
             }
         }
+        *cursor = 0;
 
-        cell = new_cell.str();
+        // write revised cell back into line. ASSUMES new <= original cell len!
+        strcpy(line[s], &buffer[0]);
     }
 }
 
@@ -309,22 +352,23 @@ class DecoderImpl : public TranscoderBase {
 public:
     DecoderImpl() = default;
     DecoderImpl(const DecoderImpl&) = delete;
-    string ProcessLine(const string& input_line) override;
+    const char* ProcessLine(char* input_line) override;
 
 private:
     vector<string> dense_entries_;
+    string buffer_;
 };
 
-string DecoderImpl::ProcessLine(const string& input_line) {
+const char* DecoderImpl::ProcessLine(char *input_line) {
     ++line_number_;
     // Pass through header lines
-    if (input_line.empty() || input_line[0] == '#') {
+    if (*input_line == 0 || *input_line == '#') {
         return input_line;
     }
     ++stats_.lines;
 
     // Split the tab-separated line
-    vector<string> tokens;
+    vector<char*> tokens;
     tokens.reserve(dense_entries_.size());
     split(input_line, '\t', back_inserter(tokens));
     if (tokens.size() < 10) {
@@ -349,11 +393,10 @@ string DecoderImpl::ProcessLine(const string& input_line) {
     // Iterate over the sparse columns
     uint64_t sparse_cells = (tokens.size()-9), dense_cursor = 0;
     for (uint64_t sparse_cursor = 0; sparse_cursor < sparse_cells; sparse_cursor++) {
-        const string& t = tokens[sparse_cursor+9];
-        if (t.empty()) {
+        const char* t = tokens[sparse_cursor+9];
+        if (*t == 0) {
             fail("empty cell");
-        }
-        if (t[0] != '"') {
+        } else if (*t != '"') {
             // Dense entry - remember it and copy it to the output
             // TODO: Perhaps fill QC fields with missing values (.) if they were squeezed out.
             //       The VCF spec does however say "Trailing fields can be dropped"
@@ -365,9 +408,9 @@ string DecoderImpl::ProcessLine(const string& input_line) {
         } else {
             // Sparse entry - determine the run length
             uint64_t r = 1;
-            if (t.size() > 1) {
+            if (t[1]) { // strlen(t) > 1
                 errno = 0;
-                auto s = strtoul(t.substr(1).c_str(), nullptr, 10);
+                auto s = strtoull(t+1, nullptr, 10);
                 if (errno) {
                     fail("Undecodable sparse cell");
                 }
@@ -405,7 +448,8 @@ string DecoderImpl::ProcessLine(const string& input_line) {
         ++stats_.sparse99_lines;
     }
 
-    return output_line.str();
+    buffer_ = output_line.str();
+    return buffer_.c_str();
 }
 
 unique_ptr<Transcoder> NewDecoder() {

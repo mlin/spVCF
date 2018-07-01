@@ -96,6 +96,7 @@ int main(int argc, char *argv[]) {
 
     // Set up input & output streams
     istream* input_stream = &cin;
+    cin.tie(nullptr);
     unique_ptr<ifstream> input_box;
     if (!input_filename.empty()) {
         input_box = make_unique<ifstream>(input_filename);
@@ -125,8 +126,9 @@ int main(int argc, char *argv[]) {
     } else {
         tc = spVCF::NewEncoder(checkpoint_period, squeeze);
     }
-    for (string input_line; getline(*input_stream, input_line); ) {
-        *output_stream << tc->ProcessLine(input_line) << endl;
+    string input_line;
+    for (; getline(*input_stream, input_line); ) {
+        *output_stream << tc->ProcessLine(&input_line[0]) << '\n';
         if (input_stream->fail() || input_stream->bad() || !output_stream->good()) {
             throw runtime_error("I/O error");
         }
