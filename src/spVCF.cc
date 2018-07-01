@@ -56,7 +56,7 @@ public:
         buf_[cursor_++] = c;
         buf_[cursor_] = 0;
     }
-    OStringStream& operator<<(char c) {
+    inline OStringStream& operator<<(char c) {
         Add(c);
         return *this;
     }
@@ -74,20 +74,15 @@ public:
             return Add(s + rem);
         }
     }
-    OStringStream& operator<<(const char* s) {
+    inline OStringStream& operator<<(const char* s) {
         Add(s);
         return *this;
     }
-    OStringStream& operator<<(const std::string& s) {
-        Add(s.c_str());
-        return *this;
+    inline OStringStream& operator<<(const std::string& s) {
+        return *this << s.c_str();
     }
 
-    void Add(uint64_t x) {
-        *this << to_string(x);
-    }
-
-    const char* Get() const {
+    inline const char* Get() const {
         assert(buf_[cursor_] == 0);
         return &buf_[0];
     }
@@ -157,7 +152,7 @@ private:
     bool squeeze_ = false;
 
     vector<string> dense_entries_; // main state memory
-    vector<char> buffer_; // reused to reduce allocations
+    OStringStream buffer_;
     vector<string> roundDP_table_;
 };
 
@@ -195,16 +190,12 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
         Squeeze(tokens);
     }
 
-    if (buffer_.size() < linesz+1) {
-        // ASSUMES new < old line length!
-        buffer_.resize(2*linesz+1);
-    }
-    char *cursor = &buffer_[0];
+    buffer_.Clear();
 
     // Pass through first nine columns
-    cursor = stpcpy(cursor, tokens[0]);
+    buffer_ << tokens[0];
     for (int i = 1; i < 9; i++) {
-        *cursor++ = '\t'; cursor = stpcpy(cursor, tokens[i]);
+        buffer_ << '\t' << tokens[i];
     }
 
     uint64_t quote_run = 0; // current run-length of quotes across the row
@@ -222,14 +213,14 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
             // column. Output any accumulated run of quotes in the current row,
             // then this new entry, and update the state appropriately.
             if (quote_run) {
-                cursor = stpcpy(cursor, "\t\"");
+                buffer_ << "\t\"";
                 if (quote_run > 1) {
-                    cursor = stpcpy(cursor, to_string(quote_run).c_str());
+                    buffer_ << to_string(quote_run);
                 }
                 quote_run = 0;
                 ++sparse_cells;
             }
-            *cursor++ = '\t'; cursor = stpcpy(cursor, t);
+            buffer_ << '\t' << t;
             ++sparse_cells;
             m = t;
         } else {
@@ -239,13 +230,12 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
     }
     // Output final run of quotes
     if (quote_run) {
-        cursor = stpcpy(cursor, "\t\"");
+        buffer_ << "\t\"";
         if (quote_run > 1) {
-            cursor = stpcpy(cursor, to_string(quote_run).c_str());
+            buffer_ << to_string(quote_run);
         }
         ++sparse_cells;
     }
-    *cursor = 0;
 
     // CHECKPOINT -- return a densely-encoded row -- if we've hit the specified
     // period OR if we've passed half the period and this line is mostly dense
@@ -253,21 +243,20 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
     if (checkpoint_period_ > 0 &&
         (since_checkpoint_ >= checkpoint_period_ ||
          (since_checkpoint_*2 >= checkpoint_period_ && sparse_cells*2 >= N))) {
-        cursor = &buffer_[0];
+        buffer_.Clear();
         for (int t = 0; t < tokens.size(); t++) {
             if (t > 0) {
-                *cursor++ = '\t';
+                buffer_ << '\t';
             }
-            cursor = stpcpy(cursor, tokens[t]);
+            buffer_ << tokens[t];
             if (t >= 9) {
                 dense_entries_[t-9] = tokens[t];
             }
             assert(tokens.size() == stats_.N+9);
         }
-        *cursor = 0;
         since_checkpoint_ = 0;
         ++stats_.checkpoints;
-        return &buffer_[0];
+        return buffer_.Get();
     }
     ++since_checkpoint_;
 
@@ -280,7 +269,7 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
         ++stats_.sparse99_lines;
     }
 
-    return &buffer_[0];
+    return buffer_.Get();
 }
 
 // Truncate cells to GT:DP, and round DP down to a power of two, if
@@ -297,14 +286,14 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
         roundDP_table_.push_back("0");
         for (uint64_t DP = 1; DP < 10000; DP++) {
             uint64_t rDP = uint64_t(pow(2, floor(log2(DP))));
-            assert(rDP <= DP && (DP == 0 || DP < rDP*2));
+            assert(rDP <= DP && DP < rDP*2);
             roundDP_table_.push_back(to_string(rDP));
         }
     }
 
     // parse the FORMAT field
     vector<string> format;
-    split(line[8], ':', back_inserter(format));
+    size_t formatsz = split(line[8], ':', back_inserter(format));
 
     // locate fields of interest
     if (format[0] != "GT") {
@@ -347,10 +336,11 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
             new_format << ":" << format[i];
         }
     }
-    strcpy(line[8], new_format.Get()); // ASSUMES new <= old format len!
+    assert(new_format.Size() <= formatsz);
+    strcpy(line[8], new_format.Get());
 
     // reusable buffers to save allocations in upcoming inner loop
-    vector<char> buffer;
+    OStringStream new_cell;
     vector<char*> entries;
 
     // proceed through all cells
@@ -382,11 +372,8 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
         }
 
         // construct revised cell, beginning with GT:DP, then any remaining fields
-        if (buffer.size() < cellsz+1) {
-            buffer.resize(2*cellsz+2);
-        }
-        char* cursor = &buffer[0];
-        cursor = stpcpy(cursor, entries[0]); // GT
+        new_cell.Clear();
+        new_cell << entries[0];
         if (iDP > 0) {
             assert(permutation[1] == iDP);
             if (entries.size() > iDP) {
@@ -397,19 +384,19 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
                     if (errno) {
                         fail("Couldn't parse DP");
                     }
-                    *cursor++ = ':';
+                    new_cell << ':';
                     if (DP < roundDP_table_.size()) {
-                        cursor = stpcpy(cursor, roundDP_table_[DP].c_str());
+                        new_cell << roundDP_table_[DP];
                     } else {
                         uint64_t rDP = pow(2, floor(log2(DP)));
-                        assert(rDP <= DP && (DP == 0 || DP < rDP*2));
-                        cursor = stpcpy(cursor, to_string(rDP).c_str());
+                        assert(rDP <= DP && DP < rDP*2);
+                        new_cell << to_string(rDP);
                     }
                 } else {
-                    *cursor++ = ':'; cursor = stpcpy(cursor, entries[iDP]);
+                    new_cell << ':' << entries[iDP];
                 }
             } else {
-                cursor = stpcpy(cursor, ":.");
+                new_cell << ":.";
             }
         }
         if (truncate) {
@@ -417,18 +404,18 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
         } else {
             // copy over remaining fields
             for (size_t i = 2; i < permutation.size(); i++) {
-                *cursor++ = ':';
+                new_cell << ':';
                 if (entries.size() > permutation[i]) {
-                    cursor = stpcpy(cursor, entries[permutation[i]]);
+                    new_cell << entries[permutation[i]];
                 } else {
-                    *cursor++ = '.';
+                    new_cell << '.';
                 }
             }
         }
-        *cursor = 0;
 
-        // write revised cell back into line. ASSUMES new <= original cell len!
-        strcpy(line[s], &buffer[0]);
+        // write revised cell back into line.
+        assert(new_cell.Size() <= cellsz);
+        strcpy(line[s], new_cell.Get());
     }
 }
 
