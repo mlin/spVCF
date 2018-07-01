@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <assert.h>
+#include "strlcpy.h"
 
 using namespace std;
 
@@ -32,6 +33,94 @@ template<typename Out>
 size_t split(string& s, char delim, Out result) {
     return split(&s[0], delim, result);
 }
+
+// because std::ostringstream is too slow :(
+class OStringStream {
+public:
+    OStringStream(size_t initial_capacity)
+        : buf_size_(initial_capacity)
+        , cursor_(0)
+        {
+            buf_ = make_unique<char[]>(buf_size_+1);
+            buf_[0] = 0;
+        }
+    OStringStream() : OStringStream(64) {}
+    OStringStream(const OStringStream&) = delete;
+
+    inline void Add(char c) {
+        if (remaining() == 0) {
+            grow();
+            assert(remaining() > 0);
+        }
+
+        buf_[cursor_++] = c;
+        buf_[cursor_] = 0;
+    }
+    OStringStream& operator<<(char c) {
+        Add(c);
+        return *this;
+    }
+
+    void Add(const char* s) {
+        size_t rem = remaining();
+        size_t len = strlcpy(&buf_[cursor_], s, rem+1);
+        if (len <= rem) {
+            cursor_ += len;
+            assert(buf_[cursor_] == 0);
+        } else {
+            cursor_ += rem;
+            assert(buf_[cursor_] == 0);
+            grow(len - rem);
+            return Add(s + rem);
+        }
+    }
+    OStringStream& operator<<(const char* s) {
+        Add(s);
+        return *this;
+    }
+    OStringStream& operator<<(const std::string& s) {
+        Add(s.c_str());
+        return *this;
+    }
+
+    void Add(uint64_t x) {
+        *this << to_string(x);
+    }
+
+    const char* Get() const {
+        assert(buf_[cursor_] == 0);
+        return &buf_[0];
+    }
+
+    inline size_t Size() const {
+        assert(buf_[cursor_] == 0);
+        return cursor_;
+    }
+
+    void Clear() {
+        buf_[0] = cursor_ = 0;
+    }
+
+private:
+    inline size_t remaining() const {
+        assert(buf_[cursor_] == 0);
+        assert(cursor_ <= buf_size_);
+        return buf_size_ - cursor_;
+    }
+
+    size_t grow(size_t hint = 0) {
+        buf_size_ = max(2*buf_size_, hint+buf_size_);
+        auto buf = make_unique<char[]>(buf_size_+1);
+        memcpy(&buf[0], &buf_[0], cursor_);
+        buf[cursor_] = 0;
+        swap(buf_,buf);
+    }
+
+    // actual size of buf_ should always be buf_size_+1 to accommodate NUL
+    // invariants: cursor_ <= buf_size_ && buf_[cursor_] == 0
+    unique_ptr<char[]> buf_;
+    size_t buf_size_, cursor_;
+};
 
 // Base class for encoder/decoder with common state & error-handling
 class TranscoderBase : public Transcoder {
@@ -251,14 +340,14 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
             permutation.push_back(i);
         }
     }
-    ostringstream new_format;
+    OStringStream new_format;
     new_format << "GT";
     for (const auto i : permutation) {
         if (i > 0) {
             new_format << ":" << format[i];
         }
     }
-    strcpy(line[8], new_format.str().c_str()); // ASSUMES new <= old format len!
+    strcpy(line[8], new_format.Get()); // ASSUMES new <= old format len!
 
     // reusable buffers to save allocations in upcoming inner loop
     vector<char> buffer;
@@ -355,7 +444,7 @@ public:
 
 private:
     vector<string> dense_entries_;
-    string buffer_;
+    OStringStream buffer_;
 };
 
 const char* DecoderImpl::ProcessLine(char *input_line) {
@@ -383,7 +472,8 @@ const char* DecoderImpl::ProcessLine(char *input_line) {
     assert(dense_entries_.size() == N);
 
     // Pass through first nine columns
-    ostringstream output_line;
+    OStringStream& output_line = buffer_;
+    output_line.Clear();
     output_line << tokens[0];
     for (int i = 1; i < 9; i++) {
         output_line << '\t' << tokens[i];
@@ -447,8 +537,7 @@ const char* DecoderImpl::ProcessLine(char *input_line) {
         ++stats_.sparse99_lines;
     }
 
-    buffer_ = output_line.str();
-    return buffer_.c_str();
+    return output_line.Get();
 }
 
 unique_ptr<Transcoder> NewDecoder() {
