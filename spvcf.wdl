@@ -1,7 +1,7 @@
 task spvcf {
     File pvcf_gz
     Boolean squeeze = false
-    String release = "v0.2.0"
+    String release = "v0.2.3"
 
     parameter_meta {
         pvcf_gz: "stream"
