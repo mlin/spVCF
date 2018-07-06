@@ -205,7 +205,7 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
     for (uint64_t s = 0; s < N; s++) {
         string& m = dense_entries_[s];
         const char* t = tokens[s+9];
-        if (*t && *t == '"') {
+        if (*t == '"') {
             fail("Input seems to be sparse-encoded already");
         }
         if (m.empty() || strcmp(m.c_str(), t) != 0) {

@@ -1,10 +1,11 @@
 task spvcf {
-    File pvcf_gz
+    File in_gz
     Boolean squeeze = false
+    Boolean decode = false
     String release = "v0.2.3"
 
     parameter_meta {
-        pvcf_gz: "stream"
+        in_gz: "stream"
     }
 
     command {
@@ -15,9 +16,11 @@ task spvcf {
         wget -nv https://github.com/dnanexus-rnd/GLnexus/raw/master/cli/dxapplet/resources/usr/local/bin/bgzip
         chmod +x spvcf bgzip
 
-        nm=$(basename "${pvcf_gz}" .vcf.gz)
+        nm=$(basename "${in_gz}" .vcf.gz)
+        nm=$(basename "$nm" .spvcf.gz)
+        nm="$nm.${if decode then 'vcf.gz' else 'spvcf.gz'}"
         mkdir out
-        pigz -dc "${pvcf_gz}" | ./spvcf ${if squeeze then '-S' else ''} | ./bgzip -@ $(nproc) > out/$nm.spvcf.gz
+        pigz -dc "${in_gz}" | ./spvcf ${if squeeze then '-S' else ''} ${if decode then '-d' else ''} | ./bgzip -@ $(nproc) > out/$nm
     }
 
     runtime {
@@ -25,6 +28,6 @@ task spvcf {
     }
 
     output {
-        File spvcf_gz = glob("out/*.gz")[0]
+        File out_gz = glob("out/*.gz")[0]
     }
 }
