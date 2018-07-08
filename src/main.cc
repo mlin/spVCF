@@ -153,6 +153,7 @@ int main(int argc, char *argv[]) {
         }
         cerr << "sparse cells = " << fixed << stats.sparse_cells << endl;
         cerr << "lines (non-header) = " << fixed << stats.lines << endl;
+        cerr << "lines (75% sparse) = " << fixed << stats.sparse75_lines << endl;
         cerr << "lines (90% sparse) = " << fixed << stats.sparse90_lines << endl;
         cerr << "lines (99% sparse) = " << fixed << stats.sparse99_lines << endl;
         if (!decode) {

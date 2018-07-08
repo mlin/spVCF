@@ -7,7 +7,8 @@ struct transcode_stats {
     uint64_t N = 0;                // samples in the project VCF
     uint64_t lines = 0;            // VCF lines (excluding header)
     uint64_t sparse_cells = 0;     // total 'cells' in the sparse representation
-    uint64_t sparse90_lines = 0;   // lines encoded with <=10% the dense number of cells
+    uint64_t sparse75_lines = 0;   // lines encoded with <=25% the dense number of cells
+    uint64_t sparse90_lines = 0;   // " <=10% "
     uint64_t sparse99_lines = 0;   // " <=1% "
     // dense_cells = lines*N
 

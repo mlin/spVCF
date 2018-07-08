@@ -262,6 +262,9 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
 
     stats_.sparse_cells += sparse_cells;
     auto sparse_pct = 100*sparse_cells/N;
+    if (sparse_pct <= 25) {
+        ++stats_.sparse75_lines;
+    }
     if (sparse_pct <= 10) {
         ++stats_.sparse90_lines;
     }
@@ -516,6 +519,9 @@ const char* DecoderImpl::ProcessLine(char *input_line) {
 
     stats_.sparse_cells += sparse_cells;
     auto sparse_pct = 100*sparse_cells/N;
+    if (sparse_pct <= 25) {
+        ++stats_.sparse75_lines;
+    }
     if (sparse_pct <= 10) {
         ++stats_.sparse90_lines;
     }
