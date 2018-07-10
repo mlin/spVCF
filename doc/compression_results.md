@@ -20,7 +20,7 @@ TODO: Weissman scores
 * The QC squeezing offers >5X size reduction by itself, with little loss of *useful* information. This seems like a no-brainer for future pVCF production, with or without sparse encoding.
 * The sparse encoding of squeezed pVCF further ~doubles the compression, roughly consistent with the lossless ratio.
 * There is evidence of synergy between the squeezing and sparse encoding, as the Squeeze compression ratio climbs more steeply with *N* compared to both Squeeze&Decode and Lossless. Squeezing makes the matrix more run-length encodable as *N* grows and sites become more closely spaced.
-* At the end spVCF delivers 15X size reduction from 79 GiB to 5.2 GiB for *N*=50K. The file size scaling is still super-linear but far more gently so, so the ratio can be expected to continue climbing with *N*.
+* At the end spVCF delivers 15X size reduction from 79 GiB to 5.2 GiB for *N*=50K. The file size scaling is still super-linear but far more gently, so the ratio is expected to climb farther with *N*.
 
 Using our spreadsheet's regression (i.e. not to be taken seriously), the predicted file size for *N*=1,000,000 is 8 TiB with vcf.gz and 151 GiB with Squeezed spvcf.gz, a >50X reduction.
 
