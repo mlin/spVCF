@@ -6,7 +6,7 @@ spVCF has a default "Lossless" sparse encoding mode, and a "Squeeze" mode which 
 
 ![](https://github.com/mlin/spVCF/raw/master/doc/media/DiscovEHR_file_size.png)
 
-The green fourth series "Squeeze&Decode" shows the squeezed spVCF decoded back to dense pVCF; this is to let us disentangle the effect of discarding QC measures from the sparse encoding. 
+The "Squeeze&Decode" series show the squeezed spVCF decoded back to dense pVCF/BCF; this is to let us disentangle the effect of discarding QC measures from the sparse encoding. 
 
 We can also render these results as compression ratios:
 
