@@ -1,4 +1,3 @@
-#include <iostream>
 #include <iomanip>
 #include <locale>
 #include <fstream>
@@ -173,12 +172,77 @@ int main_codec(int argc, char *argv[], bool decode) {
     return 0;
 }
 
+void help_tabix() {
+    cout << "spvcf tabix: use a .tbi index to slice a spVCF bgzip file by genomic range" << endl;
+    cout << GIT_REVISION << "    " << __TIMESTAMP__ << endl << endl
+         << "spvcf tabix [options] in.spvcf.gz chr1:1000-2000 [chr2 ...]" << endl
+         << "Requires tabix index present e.g. in.spvcf.gz.tbi. Includes all header lines." << endl << endl
+         << "Options:" << endl
+         << "  -o,--output out.spvcf  Write to out.spvcf instead of standard output" << endl
+         << "  -h,--help              Show this help message" << endl << endl;
+}
+
+int main_tabix(int argc, char *argv[]) {
+    string output_filename;
+
+    static struct option long_options[] = {
+        {"help", no_argument, 0, 'h'},
+        {"output", required_argument, 0, 'o'},
+        {0, 0, 0, 0}
+    };
+
+    int c;
+    while (-1 != (c = getopt_long(argc, argv, "ho:",
+                                  long_options, nullptr))) {
+        switch (c) {
+            case 'h':
+                help_tabix();
+                return 0;
+            case 'o':
+                output_filename = string(optarg);
+                if (output_filename.empty()) {
+                    help_tabix();
+                    return -1;
+                }
+                break;
+            default:
+                help_tabix();
+                return -1;
+        }
+    }
+
+    if (optind+2 > argc) {
+        help_tabix();
+        return -1;
+    }
+
+    string input_filename = argv[optind++];
+    vector<string> regions;
+    while (optind < argc) {
+        regions.push_back(argv[optind++]);
+    }
+
+    ostream* output_stream = &cout;
+    unique_ptr<ofstream> output_box;
+    if (!output_filename.empty()) {
+        output_box = make_unique<ofstream>(output_filename);
+        if (output_box->bad()) {
+            throw runtime_error("Failed to open output file");
+        }
+        output_stream = output_box.get();
+    }
+
+    spVCF::TabixSlice(input_filename, regions, *output_stream);
+    return 0;
+}
+
 void help() {
     cout << "spvcf: Sparse Project VCF tool" << endl;
     cout << GIT_REVISION << "    " << __TIMESTAMP__ << endl << endl
          << "subcommands:" << endl
          << "  encode  encode Project VCF to spVCF" << endl
          << "  decode  decode spVCF to Project VCF" << endl
+         << "  tabix   use a .tbi index to slice a spVCF bgzip file by genomic range" << endl
          << "  help    show this help message" << endl << endl;
 }
 
@@ -199,6 +263,8 @@ int main(int argc, char *argv[]) {
         return main_codec(argc, argv, false);
     } else if (subcommand == "decode") {
         return main_codec(argc, argv, true);
+    } else if (subcommand == "tabix") {
+        return main_tabix(argc, argv);
     }
 
     help();

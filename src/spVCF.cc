@@ -7,8 +7,11 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <climits>
 #include <assert.h>
 #include "strlcpy.h"
+#include "htslib/kseq.h"
+#include "htslib/tbx.h"
 
 using namespace std;
 
@@ -16,22 +19,30 @@ namespace spVCF {
 
 // split s on delim & return strlen(s). s is damaged by side-effect
 template<typename Out>
-size_t split(char *s, char delim, Out result) {
+size_t split(char *s, char delim, Out result, uint64_t maxsplit = ULLONG_MAX) {
     string delims("\n");
     delims[0] = delim;
     char *cursor = s;
-    char *token = strsep(&cursor, delims.c_str()), *last_token = nullptr;
+    char *token = strsep(&cursor, delims.c_str());
+    char *last_token = token;
+    uint64_t i = 0;
     while (token) {
-        *(result++) = token;
-        last_token = token;
-        token = strsep(&cursor, delims.c_str());
+        *(result++) = last_token = token;
+        if (++i < maxsplit) {
+            token = strsep(&cursor, delims.c_str());
+        } else {
+            if (cursor) {
+                *result = last_token = cursor;
+            }
+            break;
+        }
     }
     return last_token ? (last_token + strlen(last_token) - s) : 0;
 }
 
 template<typename Out>
-size_t split(string& s, char delim, Out result) {
-    return split(&s[0], delim, result);
+size_t split(string& s, char delim, Out result, uint64_t maxsplit = ULLONG_MAX) {
+    return split(&s[0], delim, result, maxsplit);
 }
 
 // because std::ostringstream is too slow :(
@@ -202,18 +213,18 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
         if (i != 7) {
             buffer_ << tokens[i];
         } else {
-            // prepend chkptPOS to the INFO column, conveying the POS of the
+            // prepend spVCF_checkpointPOS to the INFO column, conveying the POS of the
             // last checkpoint (full dense row), which is useful for random
             // access & partial decoding of the file.
             //
-            // TODO: create an appropriate header line for chkptPOS?
+            // TODO: create an appropriate header line for spVCF_checkpointPOS?
             string INFO = tokens[7];
             string newINFO;
             if (!INFO.empty() && INFO != ".") {
                 newINFO = INFO;
                 newINFO = ";" + newINFO;
             }
-            newINFO = "chkptPOS=" + to_string(checkpoint_pos_) + newINFO;
+            newINFO = "spVCF_checkpointPOS=" + to_string(checkpoint_pos_) + newINFO;
             buffer_ << newINFO;
         }
     }
@@ -500,9 +511,9 @@ const char* DecoderImpl::ProcessLine(char *input_line) {
         if (i != 7) {
             buffer_ << tokens[i];
         } else {
-            // Strip the chkptPOS INFO field if present
+            // Strip the spVCF_checkpointPOS INFO field if present
             string INFO = tokens[7];
-            if (INFO.substr(0, 9) == "chkptPOS=") {
+            if (INFO.substr(0, 20) == "spVCF_checkpointPOS=") {
                 auto p = INFO.find(';');
                 if (p != string::npos) {
                     buffer_ << INFO.substr(p+1);
@@ -581,6 +592,246 @@ const char* DecoderImpl::ProcessLine(char *input_line) {
 
 unique_ptr<Transcoder> NewDecoder() {
     return make_unique<DecoderImpl>();
+}
+
+class TabixIterator {
+    htsFile *fp_;
+    tbx_t *tbx_;
+
+    hts_itr_t *it_;
+    kstring_t str_ = {0,0,0};
+    bool valid_ = false;
+
+    TabixIterator(htsFile *fp, tbx_t *tbx, hts_itr_t *it) {
+        fp_ = fp;
+        tbx_ = tbx;
+        it_ = it;
+        assert(tbx_ && fp_ && it_);
+    }
+
+public:
+    ~TabixIterator() {
+        tbx_itr_destroy(it_);
+        if (str_.s) {
+            free(str_.s);
+        }
+    }
+
+    static unique_ptr<TabixIterator> Open(htsFile *fp, tbx_t *tbx, const char* region) {
+        if (!tbx) {
+            return nullptr;
+        }
+        hts_itr_t *it = tbx_itr_querys(tbx, region);
+        if (!it) {
+            return nullptr;
+        }
+        auto ans = unique_ptr<TabixIterator>(new TabixIterator(fp, tbx, it));
+        ans->Next();
+        return ans;
+    }
+
+    bool Valid() const {
+        return valid_ && str_.s;
+    }
+
+    const char* Line() const {
+        if (Valid()) {
+            assert(ks_len(&str_) == strlen(str_.s));
+            return str_.s;
+        }
+        return nullptr;
+    }
+
+    void Next() {
+        valid_ = (tbx_itr_next(fp_, tbx_, it_, &str_) >= 0);
+        assert(!valid_ || str_.s);
+    }
+};
+
+void TabixSlice(const std::string& spvcf_gz, std::vector<std::string> regions, std::ostream& out) {
+    // Open the file
+    auto fp = shared_ptr<htsFile>(hts_open(spvcf_gz.c_str(), "r"),
+                                  [] (htsFile* f) { if (f && hts_close(f)) throw runtime_error("hts_close"); });
+    if (!fp) {
+        throw runtime_error("Failed to open " + spvcf_gz);
+    }
+
+    // Open the index file
+    auto tbx = shared_ptr<tbx_t>(tbx_index_load(spvcf_gz.c_str()),
+                                 [] (tbx_t *t) { if (t) tbx_destroy(t); });
+    if (!tbx) {
+        throw runtime_error("Falied to open .tbi/.csi index of " + spvcf_gz);
+    }
+
+    // Copy the header lines
+    kstring_t str = {0,0,0};
+    while (hts_getline(fp.get(), KS_SEP_LINE, &str) >= 0) {
+        if (!str.l || str.s[0]!= tbx->conf.meta_char) {
+            break;
+        }
+        out << str.s << '\n';
+    }
+
+    for (const auto& region : regions) {
+        // Parse the region as either 'chrom' or 'chrom:lo-hi'
+        string region_chrom, region_hi;
+        uint64_t region_lo = ULLONG_MAX;
+        auto c = region.find(':');
+        if (c == string::npos) {
+            region_chrom = region;
+        } else {
+            region_chrom = region.substr(0, c);
+            auto d = region.find('-', c);
+            if (c == 0 || d == string::npos || d <= c+1 || d >= region.size()-1) {
+                throw runtime_error("invalid region " + region);
+            }
+            errno = 0;
+            region_lo = strtoull(region.substr(c+1, d-c-1).c_str(), nullptr, 10);
+            if (errno) {
+                throw runtime_error("invalid region lo " + region);
+            }
+            region_hi = region.substr(d+1);
+            assert(region_hi.size());
+        }
+        assert(region_chrom.size());
+
+        // Read the first line in this region
+        auto itr = TabixIterator::Open(fp.get(), tbx.get(), region.c_str());
+        if (!itr || !itr->Valid()) {
+            continue;
+        }
+
+        // extract INFO spVCF_checkpointPOS=ck.
+        vector<char*> tokens;
+        string linecpy(itr->Line());
+        split(linecpy, '\t', back_inserter(tokens), 9);
+        if (tokens.size() < 10) {
+            throw runtime_error("read line with fewer than 10 columns");
+        }
+        string INFO = tokens[7];
+        if (INFO.substr(0, 20) != "spVCF_checkpointPOS=") {
+            // This first line happens to be a checkpoint, so we can just copy
+            // all the encoded spVCF. This occurs when slicing a whole
+            // chromosome since the first line for each chromosome is a
+            // checkpoint, but it can also happen fortuitously in the middle.
+            for (; itr->Valid(); itr->Next()) {
+                out << itr->Line() << '\n';
+            }
+            continue;
+        }
+        if (region_lo == ULLONG_MAX) {
+            throw runtime_error("First line for chromosome was not a checkpoint: " + region);
+        }
+        errno = 0;
+        uint64_t ck = strtoull(INFO.substr(20, INFO.find(';')).c_str(), nullptr, 10);
+        if (errno || ck >= region_lo) {
+            throw runtime_error("invalid spVCF_checkpointPOS field");
+        }
+
+        // Reopen iterator on chrom:ck-hi
+        assert(region_hi.size());
+        string ck_region = region_chrom + ":" + to_string(ck) + "-" + region_hi;
+        itr = TabixIterator::Open(fp.get(), tbx.get(), ck_region.c_str());
+        if (!itr || !itr->Valid()) {
+            throw runtime_error("couldn't open checkpoint region " + ck_region + " before " + region);
+        }
+
+        // Find the first checkpoint in this expanded region (it's not
+        // guaranteed to be the very first result in all cases)
+        uint64_t linepos = ULLONG_MAX;
+        while (true) {
+            linecpy = itr->Line();
+            tokens.clear();
+            split(linecpy, '\t', back_inserter(tokens), 9);
+            if (tokens.size() < 10) {
+                throw runtime_error("read line with fewer than 10 columns");
+            }
+            errno = 0;
+            linepos = strtoull(tokens[1], nullptr, 10);
+            if (errno) {
+                throw runtime_error("invalid POS " + string(tokens[1]) + " while looking for checkpoint in " + ck_region);
+            }
+            if (string(tokens[7]).substr(0, 20) != "spVCF_checkpointPOS=") {
+                break;
+            }
+            itr->Next();
+            // We're expecting to find the checkpoint before region_lo
+            if (!itr->Valid() || linepos >= region_lo) {
+                throw runtime_error("couldn't find checkpoint in " + ck_region + " before " + region);
+            }
+        }
+
+        // From the checkpoint, run spVCF decoder until we see a line with POS >= region_lo
+        // TODO: the correct condition may be END >= region_lo. Needs careful testing.
+        auto decoder = NewDecoder();
+        while (true) {
+            linecpy = itr->Line();
+
+            string decoded_line = decoder->ProcessLine(&linecpy[0]);
+            linecpy = decoded_line;
+            tokens.clear();
+            split(linecpy, '\t', back_inserter(tokens), 9);
+            if (tokens.size() < 10) {
+                throw runtime_error("read line with fewer than 10 columns");
+            }
+
+            errno = 0;
+            linepos = strtoull(tokens[1], nullptr, 10);
+            if (errno) {
+                throw runtime_error("invalid POS " + string(tokens[1]) + " while looking for checkpoint in " + ck_region);
+            }
+
+            itr->Next();
+
+            if (linepos >= region_lo) {
+                // output this row as a new checkpoint
+                out << decoded_line << '\n';
+                break;
+            }
+
+            if (!itr->Valid()) {
+                throw runtime_error("Couldn't resume from checkpoint " + ck_region + " for " + region);
+            }
+        }
+
+        // Copy subsequent lines up until the next checkpoint, setting
+        // spVCF_checkpointPOS=linepos.
+        for (; itr->Valid(); itr->Next()) {
+            linecpy = itr->Line();
+            tokens.clear();
+            split(linecpy, '\t', back_inserter(tokens), 9);
+            if (tokens.size() < 10) {
+                throw runtime_error("read line with fewer than 10 columns");
+            }
+            INFO = tokens[7];
+            if (INFO.substr(0, 20) != "spVCF_checkpointPOS=") {
+                break;
+            }
+
+            string newINFO = "spVCF_checkpointPOS=" + to_string(linepos);
+            auto sc = INFO.find(';');
+            if (sc != string::npos) {
+                newINFO = newINFO + ";" + INFO.substr(sc+1);
+            }
+
+            for (int i = 0; i < tokens.size(); i++) {
+                if (i) {
+                    out << '\t';
+                }
+                if (i != 7) {
+                    out << tokens[i];
+                } else {
+                    out << newINFO;
+                }
+            }
+            out << '\n';
+        }
+
+        // Copy remaining lines unmodified
+        for (; itr->Valid(); itr->Next()) {
+            out << itr->Line() << '\n';
+        }
+    }
 }
 
 }

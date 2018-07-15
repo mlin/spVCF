@@ -7,6 +7,9 @@
         "deque": "cpp",
         "unordered_map": "cpp",
         "vector": "cpp",
-        "system_error": "cpp"
+        "system_error": "cpp",
+        "ostream": "cpp",
+        "stdexcept": "cpp",
+        "cerrno": "cpp"
     }
 }

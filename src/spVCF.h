@@ -1,5 +1,7 @@
 #include <memory>
 #include <string>
+#include <vector>
+#include <iostream>
 
 namespace spVCF {
 
@@ -23,5 +25,7 @@ public:
 };
 std::unique_ptr<Transcoder> NewEncoder(uint64_t checkpoint_period, bool squeeze);
 std::unique_ptr<Transcoder> NewDecoder();
+
+void TabixSlice(const std::string& spvcf_gz, std::vector<std::string> regions, std::ostream& out);
 
 }
