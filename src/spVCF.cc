@@ -198,7 +198,24 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
     // Pass through first nine columns
     buffer_ << tokens[0];
     for (int i = 1; i < 9; i++) {
-        buffer_ << '\t' << tokens[i];
+        buffer_ << '\t';
+        if (i != 7) {
+            buffer_ << tokens[i];
+        } else {
+            // prepend chkptPOS to the INFO column, conveying the POS of the
+            // last checkpoint (full dense row), which is useful for random
+            // access & partial decoding of the file.
+            //
+            // TODO: create an appropriate header line for chkptPOS?
+            string INFO = tokens[7];
+            string newINFO;
+            if (!INFO.empty() && INFO != ".") {
+                newINFO = INFO;
+                newINFO = ";" + newINFO;
+            }
+            newINFO = "chkptPOS=" + to_string(checkpoint_pos_) + newINFO;
+            buffer_ << newINFO;
+        }
     }
 
     uint64_t quote_run = 0; // current run-length of quotes across the row
@@ -259,12 +276,16 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
             assert(tokens.size() == stats_.N+9);
         }
         since_checkpoint_ = 0;
-        chrom_ = tokens[0];
         errno = 0;
-        checkpoint_pos_ = strtoull(tokens[1], nullptr, 10);
+        uint64_t POS = strtoull(tokens[1], nullptr, 10);
         if (errno) {
             fail("Couldn't parse POS");
         }
+        if (chrom_ == tokens[0] && POS < checkpoint_pos_) {
+            fail("input VCF not sorted (detected decreasing POS)");
+        }
+        checkpoint_pos_ = POS;
+        chrom_ = tokens[0];
         ++stats_.checkpoints;
         return buffer_.Get();
     }
@@ -475,7 +496,23 @@ const char* DecoderImpl::ProcessLine(char *input_line) {
     buffer_.Clear();
     buffer_ << tokens[0];
     for (int i = 1; i < 9; i++) {
-        buffer_ << '\t' << tokens[i];
+        buffer_ << '\t';
+        if (i != 7) {
+            buffer_ << tokens[i];
+        } else {
+            // Strip the chkptPOS INFO field if present
+            string INFO = tokens[7];
+            if (INFO.substr(0, 9) == "chkptPOS=") {
+                auto p = INFO.find(';');
+                if (p != string::npos) {
+                    buffer_ << INFO.substr(p+1);
+                } else {
+                    buffer_ << '.';
+                }
+            } else {
+                buffer_ << INFO;
+            }
+        }
     }
 
     // Iterate over the sparse columns
