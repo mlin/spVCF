@@ -8,35 +8,42 @@
 
 using namespace std;
 
-void usage() {
-    cout << "spvcf: Encode Project VCF to Sparse Project VCF or vice-versa. " << endl;
-    cout << "       " << GIT_REVISION << "    " << __TIMESTAMP__ << endl << endl
-         << "spvcf [options] [in.vcf|-]" << endl
-         << "Reads VCF text from standard input if filename is empty or -" << endl << endl
-         << "Options:" << endl
-         << "  -o,--output out.spvcf  Write to out.spvcf instead of standard output" << endl
-         << "  -d,--decode            Decode from the sparse format instead of encoding to" << endl
-         << "  -p,--period P          Ensure checkpoints (full dense rows) at this period or less (default: 1000)" << endl
-         << "  -q,--quiet             Suppress statistics printed to standard error" << endl
-         << "  -h,--help              Show this usage message" << endl << endl
-         << "Lossy transformation to increase compression: " << endl
-         << "  -S,--squeeze           Truncate cells to GT:DP, with DP rounded down to a power of two, if: " << endl
-         << "                         - AD is present and indicates zero read depth for alternate alleles; OR" << endl
-         << "                         - VR is present and zero" << endl
-         << "                         Reorders fields within all cells."<< endl << endl;
+void help_codec(bool decode) {
+    if (!decode) {
+        cout << "spvcf encode: Encode Project VCF to Sparse Project VCF" << endl;
+        cout << GIT_REVISION << "    " << __TIMESTAMP__ << endl << endl
+            << "spvcf encode [options] [in.vcf|-]" << endl
+            << "Reads VCF text from standard input if filename is empty or -" << endl << endl
+            << "Options:" << endl
+            << "  -o,--output out.spvcf  Write to out.spvcf instead of standard output" << endl
+            << "  -p,--period P          Ensure checkpoints (full dense rows) at this period or less (default: 1000)" << endl
+            << "  -q,--quiet             Suppress statistics printed to standard error" << endl
+            << "  -h,--help              Show this help message" << endl << endl
+            << "Lossy transformation to increase compression: " << endl
+            << "  -S,--squeeze           Truncate cells to GT:DP, with DP rounded down to a power of two, if: " << endl
+            << "                         - AD is present and indicates zero read depth for alternate alleles; OR" << endl
+            << "                         - VR is present and zero" << endl
+            << "                         Reorders fields within all cells."<< endl << endl;
+    } else {
+        cout << "spvcf decode: decode Sparse Project VCF to Project VCF" << endl;
+        cout << GIT_REVISION << "    " << __TIMESTAMP__ << endl << endl
+             << "spvcf decode [options] [in.spvcf|-]" << endl
+             << "Reads spVCF text from standard input if filename is empty or -" << endl << endl
+             << "Options:" << endl
+             << "  -o,--output out.vcf  Write to out.vcf instead of standard output" << endl
+             << "  -q,--quiet           Suppress statistics printed to standard error" << endl
+             << "  -h,--help            Show this help message" << endl << endl;
+    }
 }
 
-int main(int argc, char *argv[]) {
-    // Parse arguments
+int main_codec(int argc, char *argv[], bool decode) {
     bool squeeze = false;
-    bool decode = false;
     bool quiet = false;
     string output_filename;
     uint64_t checkpoint_period = 1000;
 
     static struct option long_options[] = {
         {"help", no_argument, 0, 'h'},
-        {"decode", no_argument, 0, 'd'},
         {"squeeze", no_argument, 0, 'S'},
         {"period", required_argument, 0, 'p'},
         {"quiet", no_argument, 0, 'q'},
@@ -45,19 +52,24 @@ int main(int argc, char *argv[]) {
     };
 
     int c;
-    while (-1 != (c = getopt_long(argc, argv, "hSdp:qo:",
+    while (-1 != (c = getopt_long(argc, argv, "hSp:qo:",
                                   long_options, nullptr))) {
         switch (c) {
             case 'h':
-                usage();
+                help_codec(decode);
                 return 0;
             case 'S':
+                if (decode) {
+                    help_codec(decode);
+                    return -1;
+                }
                 squeeze = true;
                 break;
-            case 'd':
-                decode = true;
-                break;
             case 'p':
+                if (decode) {
+                    help_codec(decode);
+                    return -1;
+                }
                 errno=0;
                 checkpoint_period = strtoull(optarg, nullptr, 10);
                 if (errno) {
@@ -71,26 +83,21 @@ int main(int argc, char *argv[]) {
             case 'o':
                 output_filename = string(optarg);
                 if (output_filename.empty()) {
-                    usage();
+                    help_codec(decode);
                     return -1;
                 }
                 break;
             default: 
-                usage();
+                help_codec(decode);
                 return -1;
         }
-    }
-
-    if (squeeze && decode) {
-        cerr << "spvcf: --squeeze and --decode should not be specified together" << endl;
-        return -1;
     }
 
     string input_filename;
     if (optind == argc-1) {
         input_filename = string(argv[optind]);
     } else if (optind != argc) {
-        usage();
+        help_codec(decode);
         return -1;
     }
 
@@ -105,7 +112,7 @@ int main(int argc, char *argv[]) {
         }
         input_stream = input_box.get();
     } else if (isatty(STDIN_FILENO)) {
-        usage();
+        help_codec(decode);
         return -1;
     }
 
@@ -164,4 +171,36 @@ int main(int argc, char *argv[]) {
     }
 
     return 0;
+}
+
+void help() {
+    cout << "spvcf: Sparse Project VCF tool" << endl;
+    cout << GIT_REVISION << "    " << __TIMESTAMP__ << endl << endl
+         << "subcommands:" << endl
+         << "  encode  encode Project VCF to spVCF" << endl
+         << "  decode  decode spVCF to Project VCF" << endl
+         << "  help    show this help message" << endl << endl;
+}
+
+int main(int argc, char *argv[]) {
+    if (argc <= 1) {
+        help();
+        return -1;
+    }
+
+    string subcommand = argv[1];
+    if (subcommand == "help" || subcommand == "-h" || subcommand == "--help") {
+        help();
+        return 0;
+    }
+
+    optind = 2;
+    if (subcommand == "encode") {
+        return main_codec(argc, argv, false);
+    } else if (subcommand == "decode") {
+        return main_codec(argc, argv, true);
+    }
+
+    help();
+    return -1;
 }

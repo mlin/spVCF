@@ -13,15 +13,15 @@ mkdir -p $D
 plan tests 13
 
 pigz -dc "$HERE/data/small.vcf.gz" > $D/small.vcf
-"$EXE" -o $D/small.spvcf $D/small.vcf
+"$EXE" encode -o $D/small.spvcf $D/small.vcf
 is "$?" "0" "filename I/O"
 is "$(cat $D/small.spvcf | wc -c)" "36942054" "filename I/O output size"
 
-pigz -dc "$HERE/data/small.vcf.gz" | "$EXE" -q > $D/small.spvcf
+pigz -dc "$HERE/data/small.vcf.gz" | "$EXE" encode -q > $D/small.spvcf
 is "$?" "0" "piped I/O"
 is "$(cat $D/small.spvcf | wc -c)" "36942054" "piped I/O output size"
 
-"$EXE" -d -o $D/small.roundtrip.vcf $D/small.spvcf
+"$EXE" decode -o $D/small.roundtrip.vcf $D/small.spvcf
 is "$?" "0" "decode"
 is "$(cat $D/small.roundtrip.vcf | wc -c)" "54007969" "roundtrip decode"
 
@@ -33,11 +33,11 @@ is "$(egrep -o "chkptPOS=[0-9]+" $D/small.spvcf | uniq | cut -f2 -d = | tr '\n' 
    "5030088 5085728 5142746 5225415 5232998 5243839 5252753 5264502 5274001 " \
    "checkpoint positions"
 
-"$EXE" -S -p 500 -o $D/small.squeezed.spvcf $D/small.vcf
+"$EXE" encode -S -p 500 -o $D/small.squeezed.spvcf $D/small.vcf
 is "$?" "0" "squeeze"
 is "$(cat $D/small.squeezed.spvcf | wc -c)" "18714203" "squeezed output size"
 
-"$EXE" -d -q -o $D/small.squeezed.roundtrip.vcf $D/small.squeezed.spvcf
+"$EXE" decode -q -o $D/small.squeezed.roundtrip.vcf $D/small.squeezed.spvcf
 is "$?" "0" "squeezed roundtrip decode"
 is "$(cat $D/small.vcf | grep -v ^# | sed -r 's/(\t[^:]+):[^\t]+/\1/g' | sha256sum)" \
    "$(cat $D/small.squeezed.roundtrip.vcf | grep -v ^# | sed -r 's/(\t[^:]+):[^\t]+/\1/g' | sha256sum)" \
