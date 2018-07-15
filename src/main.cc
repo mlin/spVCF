@@ -118,6 +118,7 @@ int main(int argc, char *argv[]) {
         }
         output_stream = output_box.get();
     }
+    output_stream->setf(ios_base::unitbuf);
 
     // Encode or decode
     unique_ptr<spVCF::Transcoder> tc;
@@ -128,7 +129,8 @@ int main(int argc, char *argv[]) {
     }
     string input_line;
     for (; getline(*input_stream, input_line); ) {
-        *output_stream << tc->ProcessLine(&input_line[0]) << '\n';
+        *output_stream << tc->ProcessLine(&input_line[0]);
+        *output_stream << '\n';
         if (input_stream->fail() || input_stream->bad() || !output_stream->good()) {
             throw runtime_error("I/O error");
         }
