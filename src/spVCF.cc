@@ -148,10 +148,13 @@ public:
 private:
     void Squeeze(const vector<char*>& line);
 
-    uint64_t checkpoint_period_ = 0, since_checkpoint_ = 0;
+    uint64_t checkpoint_period_ = 0;
     bool squeeze_ = false;
 
     vector<string> dense_entries_; // main state memory
+    string chrom_;
+    uint64_t since_checkpoint_ = 0, checkpoint_pos_ = 0;
+
     OStringStream buffer_;
     vector<string> roundDP_table_;
 };
@@ -237,12 +240,13 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
         ++sparse_cells;
     }
 
-    // CHECKPOINT -- return a densely-encoded row -- if we've hit the specified
-    // period OR if we've passed half the period and this line is mostly dense
-    // anyway
-    if (checkpoint_period_ > 0 &&
-        (since_checkpoint_ >= checkpoint_period_ ||
-         (since_checkpoint_*2 >= checkpoint_period_ && sparse_cells*2 >= N))) {
+    // CHECKPOINT -- return a densely-encode row -- if we've switched to a new
+    // chromosome OR we've hit the specified period OR we've passed half the
+    // period and this line is mostly dense anyway.
+    if (chrom_ != tokens[0] ||
+        (checkpoint_period_ > 0 &&
+         (since_checkpoint_ >= checkpoint_period_ ||
+         (since_checkpoint_*2 >= checkpoint_period_ && sparse_cells*2 >= N)))) {
         buffer_.Clear();
         for (int t = 0; t < tokens.size(); t++) {
             if (t > 0) {
@@ -255,6 +259,12 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
             assert(tokens.size() == stats_.N+9);
         }
         since_checkpoint_ = 0;
+        chrom_ = tokens[0];
+        errno = 0;
+        checkpoint_pos_ = strtoull(tokens[1], nullptr, 10);
+        if (errno) {
+            fail("Couldn't parse POS");
+        }
         ++stats_.checkpoints;
         return buffer_.Get();
     }
