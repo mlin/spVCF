@@ -19,7 +19,7 @@ Starting from text pVCF, spVCF:
 [![Build Status](https://travis-ci.org/mlin/spVCF.svg?branch=master)](https://travis-ci.org/mlin/spVCF)
 
 ```
-cmake -DCMAKE_BUILD_TYPE=Release . && make
+cmake . && make
 ctest -V
 ```
 
