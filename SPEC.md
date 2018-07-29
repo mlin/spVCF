@@ -8,16 +8,26 @@ Project VCF (pVCF; aka multi-sample VCF) is the prevailing file format for small
 
 In addition to this lossless encoding, spVCF suggests a convention for discarding QC measures in cells where they probably won't be useful, which markedly reduces data volume and increases the compressibility of what remains.
 
-### Lossless encoding
+### Sparse encoding
 
-spVCF adopts identically from pVCF the tab-delimited text scheme with header, and the first nine columns providing all variant-level details. The sparse encoding affects the genotype matrix `V[i,j]`, *i* indexing variant sites and *j* indexing the *N* samples, written across tab-delimited columns ten through 9+*N* of the pVCF text file. Each entry `V[i,j]` is a colon-delimited text string including the genotype and various QC measures (DP, AD, PL, ...).
+spVCF adopts from pVCF the tab-delimited text format with header, and the first nine columns providing all variant-level details. The sparse encoding concerns the genotype matrix `V[i,j]`, *i* indexing variant sites and *j* indexing the *N* samples, written across tab-delimited columns ten through 9+*N* of the pVCF text file. Each entry `V[i,j]` is a colon-delimited text string including the genotype and various QC measures (DP, AD, PL, etc.).
 
-In the spVCF encoding, entries are replaced with a double-quotation mark `"` if they're identical to the entry *above*: `S[i,j] <- " if i>0 and V[i,j] == V[i-1,j]; V[i,j] otherwise`. Here 'identical' includes all QC measures exactly. (Such repetition is actually common in pVCF produced by merging gVCF files or other intermediates that convey reference coverage in lengthy bands.)
+In the spVCF encoding, entries are replaced with a double-quotation mark `"` if they're identical to the entry *above*: `S[i,j] <- " if i>0 and V[i,j] == V[i-1,j]; V[i,j] otherwise`. Here 'identical' includes all QC measures exactly. (Such repetition is common in pVCF produced by merging gVCF files or other intermediates summarizing reference coverage in lengthy bands.)
 
-Then, within each row of `S`, consecutive runs double-quotation marks are abbreviated with a text integer, so for example a horizontal run of 42 quotes is written `"42`, appropriately tab-delimited from adjacent entries. The result is a ragged matrix.
+Then, within each row of `S`, consecutive runs of double-quotation marks are abbreviated with a text integer, so for example a horizontal run of 42 quotes is written `"42`, appropriately tab-delimited from adjacent entries. The result is a ragged tab-delimited matrix.
 
-spVCF can be decoded back to pVCF starting from the first line which will be "dense" by construction. Upon encountering a quotation mark or an encoded run, the decoder can repeat the last-emitted entry in the appropriate column(s).
+Worked example:
 
-### Checkpoints
+### Decoding and checkpoints
+
+spVCF can be decoded back to pVCF by, first, repeating the first line, which is identical to the original by construction. On subsequent lines, the decoder copies out explicit entries and upon encountering a quotation mark or an encoded run, repeats the last-emitted entry from the respective column(s).
+
+Decoding a given line of spVCF generally requires contextual state from previous lines, potentially back to the beginning of the file. To expedite random access within a spVCF file, the encoder should also generate periodic *checkpoints*, which are simply pVCF lines copied verbatim without any run-encoding. Subsequent spVCF lines can be decoded by looking back no further than the last checkpoint.
+
+To facilitate finding the last checkpoint, the encoder must prepend an INFO field to the eighth column of each non-checkpoint line, `spVCF_checkpointPOS=12345`, giving the VCF `POS` of the last checkpoint line. The decoder must remove this extra field from the output pVCF. A spVCF line is a checkpoint if and only if it lacks this `spVCF_checkpointPOS` field first in its INFO column.
+
+The first line for each reference contig (chromosome) must be a checkpoint, naturally including the first line in the file.
+
+(Using `POS` for the pointer, rather than line numbers, is convenient for reusing tabix for random access within a block-compressed spVCF file.)
 
 ### QC entropy reduction or "squeezing"
