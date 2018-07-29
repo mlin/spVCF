@@ -10,18 +10,38 @@ Project VCF (pVCF; aka multi-sample VCF) is the prevailing file format for small
 
 spVCF adopts from pVCF the tab-delimited text format with header, and the first nine columns providing all variant-level details. The sparse encoding concerns the genotype matrix `V[i,j]`, *i* indexing variant sites and *j* indexing the *N* samples, written across tab-delimited columns ten through 9+*N* of the pVCF text file. Each cell `V[i,j]` is a colon-delimited text string including the genotype and various QC measures (DP, AD, PL, etc.).
 
-In the spVCF encoding, cells are replaced with a double-quotation mark `"` if they're identical to the cell *above*: 
+In the spVCF encoding, cells are first replaced with a double-quotation mark `"` if they're identical to the cell *above*: 
 
 ```
 S[i,j] :=   "    if i>0 and V[i,j] == V[i-1,j],
           V[i,j] otherwise.
 ```
 
-Here 'identical' covers all QC measures exactly. (Such repetition is common in pVCF produced by merging gVCF files or other intermediates summarizing reference coverage in lengthy bands.)
+Here 'identical' covers all QC measures exactly. Such repetition is common in pVCF produced by merging gVCF files or other intermediates summarizing reference coverage in lengthy bands. A site with multiple alternate alleles usually breaks such repetitive runs, but we'll address this below.
 
-Then, within each row of `S`, consecutive runs of quotation marks are abbreviated with a text integer, so for example a horizontal run of 42 quotes is written `"42`, tab-delimited from adjacent cells. The result is a ragged, tab-delimited matrix.
+Second, within each row of `S`, consecutive runs of quotation marks are abbreviated with a text integer, so for example a horizontal run of 42 quotes is written `"42`, tab-delimited from adjacent cells. The result is a ragged, tab-delimited matrix.
 
-Worked example:
+**Worked example**
+
+```
+#CHROM  POS ID REF ALT ... FORMAT       Alice                           Bob                      Carol
+22     1000  . A   G   ... GT:DP:AD:PL  0/0:35:35,0:0,117,402           0/0:29:29,0:0,109,387    0/0:22:22,0:0,63,188
+22     1012  . CT  C   ... GT:DP:AD:PL  0/0:35:35,0:0,117,402           0/0:31:31,0:0,117,396    0/1:28:17,11:74,0,188
+22     1018  . G   A   ... GT:DP:AD:PL  0/0:35:35,0:0,117,402           0/0:31:31,0:0,117,396    1/1:27:0,27:312,87,0
+22     1074  . T   C,G ... GT:DP:AD:PL  0/0:33:33,0,0:0,48,62,52,71,94  ./.:0:0,0:.,.,.,.,.,.    1/2:42:4,20,18:93,83,76,87,0,77
+```
+
+encodes to
+
+```
+#CHROM  POS ID REF ALT ... FORMAT       Alice                           Bob                      Carol
+22     1000  . A   G   ... GT:DP:AD:PL  0/0:35:35,0:0,117,402           0/0:29:29,0:0,109,387    0/0:22:22,0:0,63,188
+22     1012  . CT  C   ... GT:DP:AD:PL           "                      0/0:31:31,0:0,117,396    0/1:28:17,11:74,0,188
+22     1018  . G   A   ... GT:DP:AD:PL           "2                                              1/1:27:0,27:312,87,0
+22     1074  . T   C,G ... GT:DP:AD:PL  0/0:33:33,0,0:0,48,62,52,71,94  ./.:0:0,0:.,.,.,.,.,.    1/2:42:4,20,18:93,83,76,87,0,77
+```
+
+Here some VCF features have been omitted for brevity, and for clarity the columns have been aligned artificially (for example, in the spVCF there would be only one tab delimiting `"2` and Carol's `1/1`).
 
 ### Decoding and checkpoints
 
@@ -41,4 +61,16 @@ In any cell with QC measures indicating zero non-reference reads (typically `AD=
 
 This "squeezing" requires the encoder to reorder the colon-delimited fields in each cell so that `GT` and `DP` precede any other fields. Then it's valid for a subset of cells to omit remaining fields completely, as permitted in VCF. The FORMAT specification in column 9 of each line must reflect this reordering.
 
-Squeezing can be applied to any pVCF, usually to great benefit, whether or not the spVCF sparse encoding is also used.
+The squeezing transformation can be applied to any pVCF, usually to great benefit, whether or not the spVCF sparse encoding is also used.
+
+Revisiting the worked example above reveals a third benefit of squeezing, that it extends repetitive runs through sites with multiple alternate alleles.
+
+```
+#CHROM  POS ID REF ALT ... FORMAT       Alice                  Bob                      Carol
+22     1000  . A   G   ... GT:DP:AD:PL  0/0:32                 0/0:16                   0/0:16
+22     1012  . CT  C   ... GT:DP:AD:PL            "2                                    0/1:28:17,11:74,0,188
+22     1018  . G   A   ... GT:DP:AD:PL            "2                                    1/1:27:0,27:312,87,0
+22     1074  . T   C,G ... GT:DP:AD:PL            "            ./.:0                    1/2:42:4,20,18:93,83,76,87,0,77
+
+```
+
