@@ -10,17 +10,24 @@ In addition to this lossless encoding, spVCF suggests a convention for discardin
 
 ### Sparse encoding
 
-spVCF adopts from pVCF the tab-delimited text format with header, and the first nine columns providing all variant-level details. The sparse encoding concerns the genotype matrix `V[i,j]`, *i* indexing variant sites and *j* indexing the *N* samples, written across tab-delimited columns ten through 9+*N* of the pVCF text file. Each entry `V[i,j]` is a colon-delimited text string including the genotype and various QC measures (DP, AD, PL, etc.).
+spVCF adopts from pVCF the tab-delimited text format with header, and the first nine columns providing all variant-level details. The sparse encoding concerns the genotype matrix `V[i,j]`, *i* indexing variant sites and *j* indexing the *N* samples, written across tab-delimited columns ten through 9+*N* of the pVCF text file. Each cell `V[i,j]` is a colon-delimited text string including the genotype and various QC measures (DP, AD, PL, etc.).
 
-In the spVCF encoding, entries are replaced with a double-quotation mark `"` if they're identical to the entry *above*: `S[i,j] <- " if i>0 and V[i,j] == V[i-1,j]; V[i,j] otherwise`. Here 'identical' includes all QC measures exactly. (Such repetition is common in pVCF produced by merging gVCF files or other intermediates summarizing reference coverage in lengthy bands.)
+In the spVCF encoding, cells are replaced with a double-quotation mark `"` if they're identical to the cell *above*: 
 
-Then, within each row of `S`, consecutive runs of double-quotation marks are abbreviated with a text integer, so for example a horizontal run of 42 quotes is written `"42`, appropriately tab-delimited from adjacent entries. The result is a ragged tab-delimited matrix.
+```
+S[i,j] :=   "    if i>0 and V[i,j] == V[i-1,j],
+          V[i,j] otherwise.
+```
+
+Here 'identical' covers all QC measures exactly. (Such repetition is common in pVCF produced by merging gVCF files or other intermediates summarizing reference coverage in lengthy bands.)
+
+Then, within each row of `S`, consecutive runs of quotation marks are abbreviated with a text integer, so for example a horizontal run of 42 quotes is written `"42`, tab-delimited from adjacent cells. The result is a ragged tab-delimited matrix.
 
 Worked example:
 
 ### Decoding and checkpoints
 
-spVCF can be decoded back to pVCF by, first, repeating the first line, which is identical to the original by construction. On subsequent lines, the decoder copies out explicit entries and upon encountering a quotation mark or an encoded run, repeats the last-emitted entry from the respective column(s).
+spVCF is decoded back to pVCF by, first, repeating the first line, identical to the original by construction. On subsequent lines, the decoder copies out explicit cells and upon encountering a quotation mark or an encoded run thereof, repeats the last-emitted cell from the respective column(s).
 
 Decoding a given line of spVCF generally requires contextual state from previous lines, potentially back to the beginning of the file. To expedite random access within a spVCF file, the encoder should also generate periodic *checkpoints*, which are simply pVCF lines copied verbatim without any run-encoding. Subsequent spVCF lines can be decoded by looking back no further than the last checkpoint.
 
@@ -31,3 +38,7 @@ The first line for each reference contig (chromosome) must be a checkpoint, natu
 (Using `POS` for the pointer, rather than line numbers, is convenient for reusing tabix for random access within a block-compressed spVCF file.)
 
 ### QC entropy reduction or "squeezing"
+
+Lastly, spVCF suggests the following convention to remove typically-unneeded detail from the matrix, and increase the compressibility of what remains. In any cell with QC measures indicating zero non-reference reads (typically `AD=d,0` for some *d*, but this depends on how the pVCF-generating pipeline expresses non-reference read depth), keep only `GT` and `DP` and omit any other fields. Also, round `DP` down to a power of two (0, 1, 2, 4, 8, 16, ...).
+
+This "squeezing" process requires the encoder to reorder the colon-delimited fields in each cell so that `GT` and `DP` precede any other fields. This makes it valid for a subset of cells to omit the other fields completely, as permitted in VCF.
