@@ -29,17 +29,17 @@ Worked example:
 
 spVCF is decoded back to pVCF by, first, repeating the first line, identical to the original by construction. On subsequent lines, the decoder copies out explicit cells and upon encountering a quotation mark or an encoded run thereof, repeats the last-emitted cell from the respective column(s).
 
-Decoding a given line of spVCF generally requires contextual state from previous lines, potentially back to the beginning of the file. To expedite random access within a spVCF file, the encoder should also generate periodic *checkpoints*, which are simply pVCF lines copied verbatim without any run-encoding. Subsequent spVCF lines can be decoded by looking back no further than the last checkpoint.
+Decoding a given line of spVCF generally requires contextual state from previous lines, potentially back to the beginning of the file. To expedite random access within a spVCF file, the encoder should also generate periodic *checkpoints*, which are simply pVCF lines copied verbatim without any run-encoding. Subsequent spVCF lines can be decoded by looking back no farther than the last checkpoint.
 
 To facilitate finding the last checkpoint, the encoder must prepend an INFO field to the eighth column of each non-checkpoint line, `spVCF_checkpointPOS=12345`, giving the VCF `POS` of the last checkpoint line. The decoder must remove this extra field from the output pVCF. A spVCF line is a checkpoint if and only if it lacks this `spVCF_checkpointPOS` field first in its INFO column.
 
-The first line for each reference contig (chromosome) must be a checkpoint, naturally including the first line in the file.
+The first line for each reference contig (chromosome) must be a checkpoint, naturally including the first line of the file.
 
-(Using `POS` for the pointer, rather than line numbers, is convenient for reusing tabix for random access within a block-compressed spVCF file.)
+(Using `POS` for the pointer, rather than line numbers, is convenient for reusing tabix indices.)
 
 ### QC entropy reduction or "squeezing"
 
-Lastly, spVCF suggests the following convention to remove typically-unneeded detail from the matrix, and increase the compressibility of what remains, prior to the sparse encoding discussed above.
+Lastly, spVCF suggests the following convention to remove typically-unneeded detail from the matrix, and increase the compressibility of what remains, prior to the sparse encoding.
 
 In any cell with QC measures indicating zero non-reference reads (typically `AD=d,0` for some *d*, but this depends on how the pVCF-generating pipeline expresses non-reference read depth), keep only `GT` and `DP` and omit any other fields. Also, round `DP` down to a power of two (0, 1, 2, 4, 8, 16, ...).
 
