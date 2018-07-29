@@ -47,9 +47,9 @@ Notice that a site with multiple alternate alleles usually breaks the columnar r
 
 ### Decoding and checkpoints
 
-spVCF is decoded back to pVCF by, first, copying out the header and the first line, which are identical to the original. On subsequent lines, the decoder copies out explicit cells and upon encountering a quotation mark or an encoded run thereof, repeats the last-emitted cell from the respective column(s).
+spVCF is decoded back to pVCF by, first, copying out the header and the first line, which are identical to the original. On subsequent lines, the decoder copies out explicit cells and, upon encountering a quotation mark or an encoded run thereof, repeats the last-emitted cell from the respective column(s).
 
-Decoding a given line of spVCF requires context from previous lines, potentially back to the beginning of the file. To allow random access within a spVCF file, the encoder should also generate periodic *checkpoints*, which are simply pVCF lines copied verbatim without any run-encoding. Subsequent spVCF lines can be decoded by looking back no farther than the last checkpoint.
+Decoding a given line of spVCF requires context from previous lines, potentially back to the beginning of the file. To enable random access within a spVCF file, the encoder should also generate periodic *checkpoints*, which are simply pVCF lines copied verbatim without any run-encoding. Subsequent spVCF lines can be decoded by looking back no farther than the last checkpoint.
 
 To facilitate finding the last checkpoint, the encoder prepends an INFO field to the eighth column of each non-checkpoint line, `spVCF_checkpointPOS=12345`, giving the VCF `POS` of the last checkpoint line. The decoder must remove this extra field from the output pVCF. A spVCF line is a checkpoint if and only if it lacks this `spVCF_checkpointPOS` field first in its INFO column. The first line for each reference contig (chromosome) must be a checkpoint, naturally including the first line of the file. 
 
