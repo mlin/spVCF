@@ -10,6 +10,12 @@ In addition to this lossless encoding, spVCF suggests a convention for discardin
 
 ### Lossless encoding
 
-### Internal checkpoints
+spVCF adopts identically from pVCF the tab-delimited text scheme with header, and the first nine columns providing all variant-level details. The sparse encoding affects the genotype matrix `V[i,j]`, *i* indexing variant sites and *j* indexing the *N* samples, written across tab-delimited columns ten through 9+*N* of the pVCF text file. Each entry `V[i,j]` is a colon-delimited text string including the genotype and various QC measures (DP, AD, PL, ...).
+
+In the spVCF encoding, entries are replaced with a double-quotation mark `"` if they're identical to the entry *above*: `S[i,j] <- " if i>0 and V[i,j] == V[i-1,j]; V[i,j] otherwise`. Here 'identical' includes all QC measures exactly; such repetition is actually common in pVCF produced by merging gVCF files or other intermediates that convey reference coverage in lengthy bands.
+
+Then, within each row of `S`, consecutive runs double-quotation marks are abbreviated with a text integer, so for example a horizontal run of 42 quotes is written `"42`, appropriately tab-delimited from adjacent entries. The result is a ragged matrix.
+
+### Checkpoints
 
 ### QC entropy reduction or "squeezing"
