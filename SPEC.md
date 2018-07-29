@@ -17,7 +17,7 @@ S[i,j] :=   "    if i>0 and V[i,j] == V[i-1,j],
           V[i,j] otherwise.
 ```
 
-Here 'identical' covers all QC measures exactly. Such repetition is common in pVCF production with tools like [GATK GenotypeGVCFs](https://software.broadinstitute.org/gatk/documentation/tooldocs/3.8-0/org_broadinstitute_gatk_tools_walkers_variantutils_GenotypeGVCFs.php) and [GLnexus](https://github.com/dnanexus-rnd/GLnexus), which merge gVCF or similar files summarizing reference coverage in lengthy bands. A site with multiple alternate alleles usually breaks such repetitive runs, but we'll address this below.
+Here 'identical' covers all QC measures exactly. Such exact repetition is common in pVCF produced using tools like [GATK GenotypeGVCFs](https://software.broadinstitute.org/gatk/documentation/tooldocs/3.8-0/org_broadinstitute_gatk_tools_walkers_variantutils_GenotypeGVCFs.php) and [GLnexus](https://github.com/dnanexus-rnd/GLnexus), which merge gVCF or similar files summarizing reference coverage in lengthy bands. A site with multiple alternate alleles usually breaks such repetitive runs, but we'll address this below.
 
 Second, within each row of `S`, consecutive runs of quotation marks are abbreviated with a text integer, so for example a horizontal run of 42 quotes is written `"42`, tab-delimited from adjacent cells. The result is a ragged, tab-delimited matrix.
 
