@@ -4,7 +4,7 @@
 
 Project VCF (pVCF; aka multi-sample VCF) is the prevailing file format for small genetic variants discovered by cohort sequencing. It encodes a two-dimensional matrix with variant sites down the rows and study participants across the columns, filled in with all the genotypes and associated QC measures (read depths, genotype likelihoods, etc.). Large cohorts harbor many rare variants, implying a sparse genotype matrix composed largely of reference-homozygous or non-called cells. The dense pVCF format encodes this very inefficiently. See the [VCF specification](http://samtools.github.io/hts-specs/VCFv4.3.pdf) for full details of this format.
 
-[Sparse Project VCF (spVCF)](https://github.com/mlin/spVCF) is a simple scheme to encode the pVCF matrix sparsely, by keeping most aspects of the VCF format while run-length encoding repetitive information about reference sequence coverage. The encoding includes a checkpointing feature to enable random access within a block-compressed spVCF file, using familiar tools like `bgzip` and `tabix`.
+[Sparse Project VCF (spVCF)](https://github.com/mlin/spVCF) is a simple scheme to encode the pVCF matrix sparsely, by keeping most aspects of the VCF format while run-length encoding repetitive information about reference coverage. The encoding includes a checkpointing feature to facilitate random access within a block-compressed spVCF file, using familiar tools like `bgzip` and `tabix`. Lastly, spVCF suggests an optional convention to strip typically-unneeded QC details from the matrix.
 
 ### Sparse encoding
 
