@@ -57,15 +57,13 @@ With checkpoints, it's possible to reuse the familiar `bgzip` and `tabix` utilit
 
 ### Optional: QC entropy reduction or "squeezing"
 
-Lastly, spVCF suggests an optional convention to remove typically-unneeded detail from the matrix, and increase the compressibility of what remains, prior to the sparse encoding.
+Lastly, spVCF suggests the following convention to remove typically-unneeded detail from the matrix, and increase the compressibility of what remains, prior to the sparse encoding. In any cell with QC measures indicating zero non-reference reads (typically `AD=d,0` for some *d*, but this depends on how the pVCF-generating pipeline expresses non-reference read depth), report only `GT` and `DP` and omit any other fields. Also, round `DP` down to a power of two (0, 1, 2, 4, 8, 16, ...).
 
-In any cell with QC measures indicating zero non-reference reads (typically `AD=d,0` for some *d*, but this depends on how the pVCF-generating pipeline expresses non-reference read depth), keep only `GT` and `DP` and omit any other fields. Also, round `DP` down to a power of two (0, 1, 2, 4, 8, 16, ...).
+This "squeezing" requires the encoder to reorder the colon-delimited fields in each cell so that `GT` and `DP` precede any other fields. Then it's valid for a subset of cells to omit remaining fields completely, as permitted by VCF. The FORMAT specification in column 9 of each line must reflect this reordering.
 
-This "squeezing" requires the encoder to reorder the colon-delimited fields in each cell so that `GT` and `DP` precede any other fields. Then it's valid for a subset of cells to omit remaining fields completely, as permitted in VCF. The FORMAT specification in column 9 of each line must reflect this reordering.
+The optional squeezing transformation can be applied to any pVCF, usually to great benefit, whether or not the spVCF sparse encoding is also used.
 
-The squeezing transformation can be applied to any pVCF, usually to great benefit, whether or not the spVCF sparse encoding is also used.
-
-Revisiting the worked example above reveals a third benefit of squeezing, that it extends repetitive runs through sites with multiple alternate alleles.
+Revisiting the worked example above reveals another benefit of squeezing, that it extends repetitive runs through sites with multiple alternate alleles.
 
 ```
 #CHROM  POS ID REF ALT ... FORMAT       Alice                  Bob                      Carol
