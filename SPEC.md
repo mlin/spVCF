@@ -39,6 +39,8 @@ The first line for each reference contig (chromosome) must be a checkpoint, natu
 
 ### QC entropy reduction or "squeezing"
 
-Lastly, spVCF suggests the following convention to remove typically-unneeded detail from the matrix, and increase the compressibility of what remains. In any cell with QC measures indicating zero non-reference reads (typically `AD=d,0` for some *d*, but this depends on how the pVCF-generating pipeline expresses non-reference read depth), keep only `GT` and `DP` and omit any other fields. Also, round `DP` down to a power of two (0, 1, 2, 4, 8, 16, ...).
+Lastly, spVCF suggests the following convention to remove typically-unneeded detail from the matrix, and increase the compressibility of what remains, prior to the sparse encoding discussed above.
 
-This "squeezing" process requires the encoder to reorder the colon-delimited fields in each cell so that `GT` and `DP` precede any other fields. This makes it valid for a subset of cells to omit the other fields completely, as permitted in VCF.
+In any cell with QC measures indicating zero non-reference reads (typically `AD=d,0` for some *d*, but this depends on how the pVCF-generating pipeline expresses non-reference read depth), keep only `GT` and `DP` and omit any other fields. Also, round `DP` down to a power of two (0, 1, 2, 4, 8, 16, ...).
+
+This "squeezing" requires the encoder to reorder the colon-delimited fields in each cell so that `GT` and `DP` precede any other fields. This makes it valid for a subset of cells to omit the other fields completely, as permitted in VCF.
