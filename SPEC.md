@@ -45,4 +45,4 @@ In any cell with QC measures indicating zero non-reference reads (typically `AD=
 
 This "squeezing" requires the encoder to reorder the colon-delimited fields in each cell so that `GT` and `DP` precede any other fields. Then it's valid for a subset of cells to omit remaining fields completely, as permitted in VCF. The FORMAT specification in column 9 of each line must reflect this reordering.
 
-Squeezing can be applied to any pVCF, usually to great benefit, whether the spVCF sparse encoding is also used or not.
+Squeezing can be applied to any pVCF, usually to great benefit, whether or not the spVCF sparse encoding is also used.
