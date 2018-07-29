@@ -12,7 +12,7 @@ Briefly, starting from text pVCF, spVCF:
 2. Run-length encodes these across the rows, so for example a *horizontal* run of 42 quotes is written `"42`
 3. *Optional*: suppresses fields other than genotype `GT` and read depth `DP` from cells indicating no non-reference reads `AD=*,0`. Also rounds `DP` down to a power of two in these cells (0, 1, 2, 4, 8, 16, ...), increasing compressibility while preserving information to distinguish reference-homozygous from unknown genotypes.
 
-See [SPEC.md](https://github.com/mlin/spVCF/blob/master/README.md) for further details and a worked example. In [doc/compression_results.md](https://github.com/mlin/spVCF/blob/master/doc/compression_results.md), we test spVCF with *N*=50K exomes, observing up to 15X size reduction for bgzip-compressed pVCF, and scaling much more gently with *N*.
+See [SPEC.md](https://github.com/mlin/spVCF/blob/master/SPEC.md) for further details and a worked example. In [doc/compression_results.md](https://github.com/mlin/spVCF/blob/master/doc/compression_results.md), we test spVCF with *N*=50K exomes, observing up to 15X size reduction for bgzip-compressed pVCF, and scaling much more gently with *N*.
 
 ## `spvcf` utility
 
