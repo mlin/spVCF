@@ -51,7 +51,7 @@ Decoding a given line of spVCF requires context from previous lines, potentially
 
 To facilitate finding the last checkpoint, the encoder prepends an INFO field to the eighth column of each non-checkpoint line, `spVCF_checkpointPOS=12345`, giving the VCF `POS` of the last checkpoint line. The decoder must remove this extra field from the output pVCF. A spVCF line is a checkpoint if and only if it lacks this `spVCF_checkpointPOS` field first in its INFO column. The first line for each reference contig (chromosome) must be a checkpoint, naturally including the first line of the file. 
 
-With checkpoints, it's possible to reuse the familiar `bgzip` and `tabix` utilities with spVCF files. Compression and indexing use the original utilities as-is, while random access (genomic range slicing) requires specialized logic to construct self-contained spVCF from the whole original, decoding from a checkpoint as needed. The decoder seeking a checkpoint must accommodate the possibility that multiple VCF lines could share `POS` with the desired checkpoint.
+With checkpoints, it's possible to reuse the familiar `bgzip` and `tabix` utilities with spVCF files. Compression and indexing use the original utilities as-is, while random access (genomic range slicing) requires specialized logic to construct self-contained spVCF from the whole original, locating a checkpoint and decoding from it as needed. The decoder seeking a checkpoint must accommodate the possibility that multiple VCF lines could share `POS` with the desired checkpoint.
 
 ### Optional: QC entropy reduction or "squeezing"
 
