@@ -4,7 +4,7 @@
 
 Project VCF (pVCF; aka multi-sample VCF) is the prevailing file format for small genetic variants discovered by cohort sequencing. It encodes a two-dimensional matrix with variant sites down the rows and study participants across the columns, filled in with all the genotypes and associated QC measures (read depths, genotype likelihoods, etc.). Large cohorts harbor many rare variants, implying a sparse genotype matrix composed largely of reference-homozygous or non-called cells. The dense pVCF format encodes this very inefficiently. See the [VCF specification](http://samtools.github.io/hts-specs/VCFv4.3.pdf) for full details of this format.
 
-[Sparse Project VCF (spVCF)](https://github.com/mlin/spVCF) is a simple scheme to encode the pVCF matrix sparsely, by keeping most aspects of the VCF format but run-length encoding repetitive information about reference sequence coverage. The encoding includes a checkpointing feature to enable random access within a block-compressed spVCF file, using familiar tools like `bgzip` and `tabix`.
+[Sparse Project VCF (spVCF)](https://github.com/mlin/spVCF) is a simple scheme to encode the pVCF matrix sparsely, by keeping most aspects of the VCF format while run-length encoding repetitive information about reference sequence coverage. The encoding includes a checkpointing feature to enable random access within a block-compressed spVCF file, using familiar tools like `bgzip` and `tabix`.
 
 ### Sparse encoding
 
@@ -17,7 +17,7 @@ S[i,j] :=   "    if i>0 and V[i,j] == V[i-1,j],
           V[i,j] otherwise.
 ```
 
-Here 'identical' covers all QC measures exactly. Such repetition is common in pVCF production with tools like [GATK GenotypeGVCFs](https://software.broadinstitute.org/gatk/documentation/tooldocs/3.8-0/org_broadinstitute_gatk_tools_walkers_variantutils_GenotypeGVCFs.php) and [GLnexus](https://github.com/dnanexus-rnd/GLnexus), by merging gVCF files or other intermediates summarizing reference coverage in lengthy bands. A site with multiple alternate alleles usually breaks such repetitive runs, but we'll address this below.
+Here 'identical' covers all QC measures exactly. Such repetition is common in pVCF production with tools like [GATK GenotypeGVCFs](https://software.broadinstitute.org/gatk/documentation/tooldocs/3.8-0/org_broadinstitute_gatk_tools_walkers_variantutils_GenotypeGVCFs.php) and [GLnexus](https://github.com/dnanexus-rnd/GLnexus), which merge gVCF or similar files summarizing reference coverage in lengthy bands. A site with multiple alternate alleles usually breaks such repetitive runs, but we'll address this below.
 
 Second, within each row of `S`, consecutive runs of quotation marks are abbreviated with a text integer, so for example a horizontal run of 42 quotes is written `"42`, tab-delimited from adjacent cells. The result is a ragged, tab-delimited matrix.
 
