@@ -1,5 +1,7 @@
 # Sparse Project VCF (spVCF)
 
+**Maintainer: Mike Lin [@DNAmlin](https://twitter.com/DNAmlin)**
+
 Project VCF (pVCF; aka multi-sample VCF) is the prevailing file format for small genetic variants discovered by cohort sequencing. It encodes a two-dimensional matrix with variant sites down the rows and study participants across the columns, filled in with all the genotypes and associated QC measures (read depths, genotype likelihoods, etc.). Large cohorts harbor many rare variants, implying a sparse genotype matrix composed largely of reference-homozygous or non-called cells. But the dense pVCF format encodes this inefficiently, growing super-linearly with the cohort size.
 
 To quantify this problem, in recent experiments with up to *N*=50K human exomes, 96% of pVCF sites had non-reference allele frequency below 0.1%, while doubling *N* from 25K also increased the number of sites by 43% (cf. Table 2 of the [GLnexus preprint](https://www.biorxiv.org/content/early/2018/06/11/343970)).
