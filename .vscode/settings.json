@@ -10,6 +10,7 @@
         "system_error": "cpp",
         "ostream": "cpp",
         "stdexcept": "cpp",
-        "cerrno": "cpp"
+        "cerrno": "cpp",
+        "sstream": "cpp"
     }
 }
