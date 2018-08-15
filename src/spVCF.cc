@@ -150,8 +150,8 @@ protected:
 
 class EncoderImpl : public TranscoderBase {
 public:
-    EncoderImpl(uint64_t checkpoint_period, bool squeeze)
-        : checkpoint_period_(checkpoint_period), squeeze_(squeeze)
+    EncoderImpl(uint64_t checkpoint_period, bool sparse, bool squeeze)
+        : checkpoint_period_(checkpoint_period), sparse_(sparse), squeeze_(squeeze)
         {}
     EncoderImpl(const EncoderImpl&) = delete;
     const char* ProcessLine(char* input_line) override;
@@ -160,6 +160,7 @@ private:
     void Squeeze(const vector<char*>& line);
 
     uint64_t checkpoint_period_ = 0;
+    bool sparse_ = true;
     bool squeeze_ = false;
 
     vector<string> dense_entries_; // main state memory
@@ -210,7 +211,7 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
     buffer_ << tokens[0];
     for (int i = 1; i < 9; i++) {
         buffer_ << '\t';
-        if (i != 7) {
+        if (i != 7 || !sparse_) {
             buffer_ << tokens[i];
         } else {
             // prepend spVCF_checkpointPOS to the INFO column, conveying the POS of the
@@ -227,6 +228,13 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
             newINFO = "spVCF_checkpointPOS=" + to_string(checkpoint_pos_) + newINFO;
             buffer_ << newINFO;
         }
+    }
+
+    if (!sparse_) {
+        for (int i = 9; i < tokens.size(); i++) {
+            buffer_ << '\t' << tokens[i];
+        }
+        return buffer_.Get();
     }
 
     uint64_t quote_run = 0; // current run-length of quotes across the row
@@ -464,8 +472,8 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
     }
 }
 
-unique_ptr<Transcoder> NewEncoder(uint64_t checkpoint_period, bool squeeze) {
-    return make_unique<EncoderImpl>(checkpoint_period, squeeze);
+unique_ptr<Transcoder> NewEncoder(uint64_t checkpoint_period, bool sparse, bool squeeze) {
+    return make_unique<EncoderImpl>(checkpoint_period, sparse, squeeze);
 }
 
 class DecoderImpl : public TranscoderBase {

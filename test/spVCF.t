@@ -10,7 +10,7 @@ D=/tmp/spVCFTests
 rm -rf $D
 mkdir -p $D
 
-plan tests 18
+plan tests 20
 
 pigz -dc "$HERE/data/small.vcf.gz" > $D/small.vcf
 "$EXE" encode -o $D/small.spvcf $D/small.vcf
@@ -42,6 +42,12 @@ is "$?" "0" "squeezed roundtrip decode"
 is "$(cat $D/small.vcf | grep -v ^# | sed -r 's/(\t[^:]+):[^\t]+/\1/g' | sha256sum)" \
    "$(cat $D/small.squeezed.roundtrip.vcf | grep -v ^# | sed -r 's/(\t[^:]+):[^\t]+/\1/g' | sha256sum)" \
    "squeezed roundtrip GT fidelity"
+
+"$EXE" squeeze -q -o $D/small.squeezed_only.vcf $D/small.vcf
+is "$?" "0" "squeeze (only)"
+is "$(cat $D/small.squeezed_only.vcf | grep -v ^# | sha256sum)" \
+   "$(cat $D/small.squeezed.roundtrip.vcf | grep -v ^# | sha256sum)" \
+   "squeeze (only) fidelity"
 
 is "$(egrep -o "spVCF_checkpointPOS=[0-9]+" $D/small.squeezed.spvcf | uniq | cut -f2 -d = | tr '\n' ' ')" \
    "5030088 5053371 5085752 5111059 5142907 5219436 5225476 5229291 5233041 5238611 5244009 5248275 5252854 5257548 5265256 5271818 " \

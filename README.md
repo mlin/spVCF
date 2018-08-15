@@ -64,6 +64,8 @@ $ bgzip -dc my.vcf.gz | ./spvcf encode | bgzip -c > my.spvcf.gz
 $ bgzip -dc my.spvcf.gz | ./spvcf decode > my.decoded.vcf
 ```
 
+There's also `spvcf squeeze` to apply the QC squeezing transformation to a pVCF, without the sparse quote-encoding.
+
 ### Tabix slicing
 
 If the regular `bgzip` and `tabix` utilities are used to block-compress and index a spVCF file, then `spvcf tabix` can take a genomic range slice from it, extracting spVCF which decodes standalone. (The regular `tabix` utility generates the index, but using it to take the slice would yield a broken fragment.) Internally, this entails decoding a small bit of the spVCF, determined by the `spvcf encode --period` option.

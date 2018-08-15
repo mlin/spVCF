@@ -7,36 +7,62 @@
 
 using namespace std;
 
-void help_codec(bool decode) {
-    if (!decode) {
-        cout << "spvcf encode: Encode Project VCF to Sparse Project VCF" << endl;
-        cout << GIT_REVISION << "    " << __TIMESTAMP__ << endl << endl
-            << "spvcf encode [options] [in.vcf|-]" << endl
-            << "Reads VCF text from standard input if filename is empty or -" << endl << endl
-            << "Options:" << endl
-            << "  -o,--output out.spvcf  Write to out.spvcf instead of standard output" << endl
-            << "  -p,--period P          Ensure checkpoints (full dense rows) at this period or less (default: 1000)" << endl
-            << "  -q,--quiet             Suppress statistics printed to standard error" << endl
-            << "  -h,--help              Show this help message" << endl << endl
-            << "Lossy transformation to increase compression: " << endl
-            << "  -S,--squeeze           Truncate cells to GT:DP, with DP rounded down to a power of two, if: " << endl
-            << "                         - AD is present and indicates zero read depth for alternate alleles; OR" << endl
-            << "                         - VR is present and zero" << endl
-            << "                         Reorders fields within all cells."<< endl << endl;
-    } else {
-        cout << "spvcf decode: decode Sparse Project VCF to Project VCF" << endl;
-        cout << GIT_REVISION << "    " << __TIMESTAMP__ << endl << endl
-             << "spvcf decode [options] [in.spvcf|-]" << endl
-             << "Reads spVCF text from standard input if filename is empty or -" << endl << endl
-             << "Options:" << endl
-             << "  -o,--output out.vcf  Write to out.vcf instead of standard output" << endl
-             << "  -q,--quiet           Suppress statistics printed to standard error" << endl
-             << "  -h,--help            Show this help message" << endl << endl;
+enum class CodecMode {
+    encode,
+    squeeze_only,
+    decode
+};
+
+void help_codec(CodecMode mode) {
+    switch (mode) {
+        case CodecMode::encode:
+            cout << "spvcf encode: Encode Project VCF to Sparse Project VCF" << endl;
+            cout << GIT_REVISION << "    " << __TIMESTAMP__ << endl << endl
+                 << "spvcf encode [options] [in.vcf|-]" << endl
+                 << "Reads VCF text from standard input if filename is empty or -" << endl << endl
+                 << "Options:" << endl
+                 << "  -o,--output out.spvcf  Write to out.spvcf instead of standard output" << endl
+                 << "  -p,--period P          Ensure checkpoints (full dense rows) at this period or less (default: 1000)" << endl
+                 << "  -q,--quiet             Suppress statistics printed to standard error" << endl
+                 << "  -h,--help              Show this help message" << endl << endl
+                 << "Lossy transformation to increase compression: " << endl
+                 << "  -S,--squeeze           Truncate cells to GT:DP, with DP rounded down to a power of two, if: " << endl
+                 << "                         - AD is present and indicates zero read depth for alternate alleles; OR" << endl
+                 << "                         - VR is present and zero" << endl
+                 << "                         Reorders fields within all cells."<< endl << endl;
+            break;
+        case CodecMode::squeeze_only:
+            cout << "spvcf squeeze: Squeeze Project VCF (without sparse encoding)" << endl
+                 << GIT_REVISION << "    " << __TIMESTAMP__ << endl << endl;
+            cout << "spvcf squeeze [options] [in.vcf|-]" << endl
+                 << "Reads VCF text from standard input if filename is empty or -" << endl << endl
+                 << "Options:" << endl
+                 << "  -o,--output out.vcf    Write to out.vcf instead of standard output" << endl
+                 << "  -q,--quiet             Suppress statistics printed to standard error" << endl
+                 << "  -h,--help              Show this help message" << endl << endl;
+            cout << "Squeezing is a lossy transformation to reduce pVCF size and increase compressibility." << endl
+                 << "Truncate cells to GT:DP, with DP rounded down to a power of two, if: " << endl
+                 << "- AD is present and indicates zero read depth for alternate alleles; OR" << endl
+                 << "- VR is present and zero" << endl
+                 << "Reorders fields within all cells. If sparse encoding is desired, spvcf encode --squeze" << endl
+                 << "is equivalent to but more efficient than spvcf squeeze | spvcf encode."
+                 << endl << endl;
+            break;
+        case CodecMode::decode:
+            cout << "spvcf decode: decode Sparse Project VCF to Project VCF" << endl;
+            cout << GIT_REVISION << "    " << __TIMESTAMP__ << endl << endl
+                 << "spvcf decode [options] [in.spvcf|-]" << endl
+                 << "Reads spVCF text from standard input if filename is empty or -" << endl << endl
+                 << "Options:" << endl
+                 << "  -o,--output out.vcf  Write to out.vcf instead of standard output" << endl
+                 << "  -q,--quiet           Suppress statistics printed to standard error" << endl
+                 << "  -h,--help            Show this help message" << endl << endl;
+            break;
     }
 }
 
-int main_codec(int argc, char *argv[], bool decode) {
-    bool squeeze = false;
+int main_codec(int argc, char *argv[], CodecMode mode) {
+    bool squeeze = mode == CodecMode::squeeze_only ? true : false;
     bool quiet = false;
     string output_filename;
     uint64_t checkpoint_period = 1000;
@@ -55,18 +81,18 @@ int main_codec(int argc, char *argv[], bool decode) {
                                   long_options, nullptr))) {
         switch (c) {
             case 'h':
-                help_codec(decode);
+                help_codec(mode);
                 return 0;
             case 'S':
-                if (decode) {
-                    help_codec(decode);
+                if (mode != CodecMode::encode) {
+                    help_codec(mode);
                     return -1;
                 }
                 squeeze = true;
                 break;
             case 'p':
-                if (decode) {
-                    help_codec(decode);
+                if (mode != CodecMode::encode) {
+                    help_codec(mode);
                     return -1;
                 }
                 errno=0;
@@ -82,12 +108,12 @@ int main_codec(int argc, char *argv[], bool decode) {
             case 'o':
                 output_filename = string(optarg);
                 if (output_filename.empty()) {
-                    help_codec(decode);
+                    help_codec(mode);
                     return -1;
                 }
                 break;
             default: 
-                help_codec(decode);
+                help_codec(mode);
                 return -1;
         }
     }
@@ -96,7 +122,7 @@ int main_codec(int argc, char *argv[], bool decode) {
     if (optind == argc-1) {
         input_filename = string(argv[optind]);
     } else if (optind != argc) {
-        help_codec(decode);
+        help_codec(mode);
         return -1;
     }
 
@@ -111,7 +137,7 @@ int main_codec(int argc, char *argv[], bool decode) {
         }
         input_stream = input_box.get();
     } else if (isatty(STDIN_FILENO)) {
-        help_codec(decode);
+        help_codec(mode);
         return -1;
     }
 
@@ -128,10 +154,10 @@ int main_codec(int argc, char *argv[], bool decode) {
 
     // Encode or decode
     unique_ptr<spVCF::Transcoder> tc;
-    if (decode) {
+    if (mode == CodecMode::decode) {
         tc = spVCF::NewDecoder();
     } else {
-        tc = spVCF::NewEncoder(checkpoint_period, squeeze);
+        tc = spVCF::NewEncoder(checkpoint_period, (mode == CodecMode::encode), squeeze);
     }
     string input_line;
     for (; getline(*input_stream, input_line); ) {
@@ -159,12 +185,14 @@ int main_codec(int argc, char *argv[], bool decode) {
         if (squeeze) {
             cerr << "squeezed cells = " << fixed << stats.squeezed_cells << endl;
         }
-        cerr << "sparse cells = " << fixed << stats.sparse_cells << endl;
-        cerr << "lines (non-header) = " << fixed << stats.lines << endl;
-        cerr << "lines (75% sparse) = " << fixed << stats.sparse75_lines << endl;
-        cerr << "lines (90% sparse) = " << fixed << stats.sparse90_lines << endl;
-        cerr << "lines (99% sparse) = " << fixed << stats.sparse99_lines << endl;
-        if (!decode) {
+        if (mode != CodecMode::squeeze_only) {
+            cerr << "sparse cells = " << fixed << stats.sparse_cells << endl;
+            cerr << "lines (non-header) = " << fixed << stats.lines << endl;
+            cerr << "lines (75% sparse) = " << fixed << stats.sparse75_lines << endl;
+            cerr << "lines (90% sparse) = " << fixed << stats.sparse90_lines << endl;
+            cerr << "lines (99% sparse) = " << fixed << stats.sparse99_lines << endl;
+        }
+        if (mode == CodecMode::encode) {
             cerr << "checkpoints = " << fixed << stats.checkpoints << endl;
         }
     }
@@ -240,10 +268,11 @@ void help() {
     cout << "spvcf: Sparse Project VCF tool" << endl;
     cout << GIT_REVISION << "    " << __TIMESTAMP__ << endl << endl
          << "subcommands:" << endl
-         << "  encode  encode Project VCF to spVCF" << endl
-         << "  decode  decode spVCF to Project VCF" << endl
-         << "  tabix   use a .tbi index to slice a spVCF bgzip file by genomic range" << endl
-         << "  help    show this help message" << endl << endl;
+         << "  encode   encode Project VCF to spVCF" << endl
+         << "  squeeze  squeeze Project VCF" << endl
+         << "  decode   decode spVCF to Project VCF" << endl
+         << "  tabix    use a .tbi index to slice a spVCF bgzip file by genomic range" << endl
+         << "  help     show this help message" << endl << endl;
 }
 
 int main(int argc, char *argv[]) {
@@ -260,9 +289,11 @@ int main(int argc, char *argv[]) {
 
     optind = 2;
     if (subcommand == "encode") {
-        return main_codec(argc, argv, false);
+        return main_codec(argc, argv, CodecMode::encode);
+    } else if (subcommand == "squeeze") {
+        return main_codec(argc, argv, CodecMode::squeeze_only);
     } else if (subcommand == "decode") {
-        return main_codec(argc, argv, true);
+        return main_codec(argc, argv, CodecMode::decode);
     } else if (subcommand == "tabix") {
         return main_tabix(argc, argv);
     }
