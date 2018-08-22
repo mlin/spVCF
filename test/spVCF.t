@@ -35,7 +35,7 @@ is "$(egrep -o "spVCF_checkpointPOS=[0-9]+" $D/small.spvcf | uniq | cut -f2 -d =
 
 "$EXE" encode -S -p 500 -o $D/small.squeezed.spvcf $D/small.vcf
 is "$?" "0" "squeeze"
-is "$(cat $D/small.squeezed.spvcf | wc -c)" "18758214" "squeezed output size"
+is "$(cat $D/small.squeezed.spvcf | wc -c)" "17453976" "squeezed output size"
 
 "$EXE" decode -q -o $D/small.squeezed.roundtrip.vcf $D/small.squeezed.spvcf
 is "$?" "0" "squeezed roundtrip decode"
