@@ -130,7 +130,7 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
     istream* input_stream = &cin;
     cin.tie(nullptr);
     unique_ptr<ifstream> input_box;
-    if (!input_filename.empty()) {
+    if (!input_filename.empty() && input_filename != "-") {
         input_box = make_unique<ifstream>(input_filename);
         if (!input_box->good()) {
             throw runtime_error("Failed to open input file");
