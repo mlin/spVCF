@@ -10,6 +10,7 @@
 #include <climits>
 #include <assert.h>
 #include "strlcpy.h"
+#include "htslib/kstring.h"
 #include "htslib/kseq.h"
 #include "htslib/tbx.h"
 
@@ -662,7 +663,7 @@ public:
 
     const char* Line() const {
         if (Valid()) {
-            assert(ks_len(&str_) == strlen(str_.s));
+            assert(ks_len((kstring_t*)&str_) == strlen(str_.s));
             return str_.s;
         }
         return nullptr;

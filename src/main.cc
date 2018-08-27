@@ -127,6 +127,7 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
     }
 
     // Set up input & output streams
+    std::ios_base::sync_with_stdio(false);
     istream* input_stream = &cin;
     cin.tie(nullptr);
     unique_ptr<ifstream> input_box;
