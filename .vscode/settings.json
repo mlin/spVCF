@@ -11,6 +11,9 @@
         "ostream": "cpp",
         "stdexcept": "cpp",
         "cerrno": "cpp",
-        "sstream": "cpp"
+        "sstream": "cpp",
+        "iosfwd": "cpp",
+        "mutex": "cpp",
+        "chrono": "cpp"
     }
 }

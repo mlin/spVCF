@@ -16,6 +16,17 @@ struct transcode_stats {
 
     uint64_t squeezed_cells = 0;   // cells whose QC measures were dropped
     uint64_t checkpoints = 0;      // checkpoints (purposely dense rows to aid partial decoding)
+
+    void operator+=(const transcode_stats& rhs) {
+        N += rhs.N;
+        lines += rhs.lines;
+        sparse_cells += rhs.sparse_cells;
+        sparse75_lines += rhs.sparse75_lines;
+        sparse90_lines += rhs.sparse90_lines;
+        sparse99_lines += rhs.sparse99_lines;
+        squeezed_cells += rhs.squeezed_cells;
+        checkpoints += rhs.checkpoints;
+    }
 };
 
 class Transcoder {

@@ -3,6 +3,10 @@
 #include <fstream>
 #include <getopt.h>
 #include <unistd.h>
+#include <assert.h>
+#include <deque>
+#include <future>
+#include <mutex>
 #include "spVCF.h"
 
 using namespace std;
@@ -12,6 +16,95 @@ enum class CodecMode {
     squeeze_only,
     decode
 };
+
+// Run encoder in a multithreaded way by buffering batches of input lines and
+// spawning a thread to work on each batch. Below, main_codec has a simpler
+// single-threaded default way to run the codec.
+spVCF::transcode_stats multithreaded_encode(CodecMode mode, uint64_t checkpoint_period, bool squeeze, size_t thread_count,
+                                            istream& input_stream, ostream& output_stream) {
+    assert(mode != CodecMode::decode);
+
+    mutex mu;
+    // mu protects the following two variables:
+    deque<future<pair<spVCF::transcode_stats,shared_ptr<vector<string>>>>> output_batches;
+    bool input_complete = false;
+
+    // spawn "sink" task to await output blocks in order and write them to output_stream
+    future<spVCF::transcode_stats> sink = async(launch::async, [&]() {
+        spVCF::transcode_stats ans;
+        while (true) {
+            future<pair<spVCF::transcode_stats,shared_ptr<vector<string>>>> batch;
+            {
+                lock_guard<mutex> lock(mu);
+                if (output_batches.empty()) {
+                    if (input_complete) {
+                        break;
+                    } else {
+                        using namespace chrono_literals;
+                        this_thread::sleep_for(100us);
+                        continue;
+                    }
+                }
+                batch = move(output_batches.front());
+                output_batches.pop_front();
+            }
+            auto rslt = move(batch.get());
+            for (auto& line : *rslt.second) {
+                output_stream << line << '\n';
+                if (!output_stream.good()) {
+                    throw runtime_error("I/O error");
+                }
+            }
+            ans += rslt.first;
+        }
+        return ans;
+    });
+
+    // worker task to process a batch of input lines into output_batches
+    auto worker = [&](shared_ptr<vector<string>> input_batch) {
+        unique_ptr<spVCF::Transcoder> tc = spVCF::NewEncoder(checkpoint_period, (mode == CodecMode::encode), squeeze);
+        auto output_lines = make_shared<vector<string>>();
+        for (auto& input_line : *input_batch) {
+            output_lines->push_back(tc->ProcessLine(&input_line[0]));
+        }
+        return make_pair(tc->Stats(), output_lines);
+    };
+
+    // In driver thread, read batches of lines from input_stream, and spawn a worker
+    // for each batch. If the number of outstanding tasks hits thread_count, wait
+    // for some of them to drain.
+    auto input_batch = make_shared<vector<string>>();
+    string input_line;
+    for (; getline(input_stream, input_line); ) {
+        input_batch->push_back(move(input_line));
+        assert(input_line.empty());
+        if (input_batch->size() >= checkpoint_period) {
+            while (true) {
+                lock_guard<mutex> lock(mu);
+                if (output_batches.size() >= thread_count) {
+                    using namespace chrono_literals;
+                    this_thread::sleep_for(100us);
+                    continue;
+                }
+                output_batches.push_back(async(launch::async, worker, input_batch));
+                break;
+            }
+            input_batch = make_shared<vector<string>>();
+        }
+    }
+    {
+        lock_guard<mutex> lock(mu);
+        if (!input_batch->empty()) {
+            output_batches.push_back(async(launch::async, worker, input_batch));
+        }
+        input_complete = true;
+    }
+    if (input_stream.bad()) {
+        throw runtime_error("I/O error");
+    }
+
+    return sink.get();
+}
 
 void help_codec(CodecMode mode) {
     switch (mode) {
@@ -23,6 +116,7 @@ void help_codec(CodecMode mode) {
                  << "Options:" << endl
                  << "  -o,--output out.spvcf  Write to out.spvcf instead of standard output" << endl
                  << "  -p,--period P          Ensure checkpoints (full dense rows) at this period or less (default: 1000)" << endl
+                 << "  -t,--threads N         Use multithreaded encoder with this number of worker threads" << endl
                  << "  -q,--quiet             Suppress statistics printed to standard error" << endl
                  << "  -h,--help              Show this help message" << endl << endl
                  << "Lossy transformation to increase compression: " << endl
@@ -38,6 +132,7 @@ void help_codec(CodecMode mode) {
                  << "Reads VCF text from standard input if filename is empty or -" << endl << endl
                  << "Options:" << endl
                  << "  -o,--output out.vcf    Write to out.vcf instead of standard output" << endl
+                 << "  -t,--threads N         Use multithreaded encoder with this number of worker threads" << endl
                  << "  -q,--quiet             Suppress statistics printed to standard error" << endl
                  << "  -h,--help              Show this help message" << endl << endl;
             cout << "Squeezing is a lossy transformation to reduce pVCF size and increase compressibility." << endl
@@ -66,18 +161,20 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
     bool quiet = false;
     string output_filename;
     uint64_t checkpoint_period = 1000;
+    size_t thread_count = 1;
 
     static struct option long_options[] = {
         {"help", no_argument, 0, 'h'},
         {"squeeze", no_argument, 0, 'S'},
         {"period", required_argument, 0, 'p'},
+        {"threads", required_argument, 0, 't'},
         {"quiet", no_argument, 0, 'q'},
         {"output", required_argument, 0, 'o'},
         {0, 0, 0, 0}
     };
 
     int c;
-    while (-1 != (c = getopt_long(argc, argv, "hSp:qo:",
+    while (-1 != (c = getopt_long(argc, argv, "hSp:qo:t:",
                                   long_options, nullptr))) {
         switch (c) {
             case 'h':
@@ -91,7 +188,7 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
                 squeeze = true;
                 break;
             case 'p':
-                if (mode != CodecMode::encode) {
+                if (mode == CodecMode::decode) {
                     help_codec(mode);
                     return -1;
                 }
@@ -99,6 +196,18 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
                 checkpoint_period = strtoull(optarg, nullptr, 10);
                 if (errno) {
                     cerr << "spvcf: couldn't parse --period" << endl;
+                    return -1;
+                }
+                break;
+            case 't':
+                if (mode == CodecMode::decode) {
+                    help_codec(mode);
+                    return -1;
+                }
+                errno=0;
+                thread_count = strtoull(optarg, nullptr, 10);
+                if (errno) {
+                    cerr << "spvcf: couldn't parse --threads" << endl;
                     return -1;
                 }
                 break;
@@ -127,6 +236,7 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
     }
 
     // Set up input & output streams
+    std::ios_base::sync_with_stdio(false);
     istream* input_stream = &cin;
     cin.tie(nullptr);
     unique_ptr<ifstream> input_box;
@@ -153,19 +263,30 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
     output_stream->setf(ios_base::unitbuf);
 
     // Encode or decode
-    unique_ptr<spVCF::Transcoder> tc;
-    if (mode == CodecMode::decode) {
-        tc = spVCF::NewDecoder();
-    } else {
-        tc = spVCF::NewEncoder(checkpoint_period, (mode == CodecMode::encode), squeeze);
-    }
-    string input_line;
-    for (; getline(*input_stream, input_line); ) {
-        *output_stream << tc->ProcessLine(&input_line[0]);
-        *output_stream << '\n';
-        if (input_stream->fail() || input_stream->bad() || !output_stream->good()) {
+    spVCF::transcode_stats stats;
+    if (thread_count <= 1) {
+        unique_ptr<spVCF::Transcoder> tc;
+        if (mode == CodecMode::decode) {
+            tc = spVCF::NewDecoder();
+        } else {
+            tc = spVCF::NewEncoder(checkpoint_period, (mode == CodecMode::encode), squeeze);
+        }
+        string input_line;
+        for (; getline(*input_stream, input_line); ) {
+            *output_stream << tc->ProcessLine(&input_line[0]);
+            *output_stream << '\n';
+            if (input_stream->fail() || input_stream->bad() || !output_stream->good()) {
+                throw runtime_error("I/O error");
+            }
+        }
+        if (input_stream->bad()) {
             throw runtime_error("I/O error");
         }
+        stats = tc->Stats();
+    } else {
+        assert(mode != CodecMode::decode);
+        stats = multithreaded_encode(mode, checkpoint_period, squeeze, thread_count,
+                                     *input_stream, *output_stream);
     }
 
     // Close up
@@ -178,7 +299,6 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
 
     // Output stats
     if (!quiet) {
-        auto stats = tc->Stats();
         cerr.imbue(locale(""));
         cerr << "N = " << fixed << stats.N << endl;
         cerr << "dense cells = " << fixed << stats.N*stats.lines << endl;

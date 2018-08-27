@@ -10,6 +10,7 @@
 #include <climits>
 #include <assert.h>
 #include "strlcpy.h"
+#include "htslib/kstring.h"
 #include "htslib/kseq.h"
 #include "htslib/tbx.h"
 
@@ -277,12 +278,9 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
     }
 
     // CHECKPOINT -- return a densely-encode row -- if we've switched to a new
-    // chromosome OR we've hit the specified period OR we've passed half the
-    // period and this line is mostly dense anyway.
+    // chromosome OR we've hit the specified period
     if (chrom_ != tokens[0] ||
-        (checkpoint_period_ > 0 &&
-         (since_checkpoint_ >= checkpoint_period_ ||
-         (since_checkpoint_*2 >= checkpoint_period_ && sparse_cells*2 >= N)))) {
+        (checkpoint_period_ > 0 && since_checkpoint_ >= checkpoint_period_)) {
         buffer_.Clear();
         for (int t = 0; t < tokens.size(); t++) {
             if (t > 0) {
@@ -662,7 +660,7 @@ public:
 
     const char* Line() const {
         if (Valid()) {
-            assert(ks_len(&str_) == strlen(str_.s));
+            assert(ks_len((kstring_t*)&str_) == strlen(str_.s));
             return str_.s;
         }
         return nullptr;
