@@ -55,11 +55,11 @@ is "$(egrep -o "spVCF_checkpointPOS=[0-9]+" $D/small.squeezed.spvcf | uniq | cut
 
 bgzip -c $D/small.squeezed.spvcf > $D/small.squeezed.spvcf.gz
 tabix $D/small.squeezed.spvcf.gz
-"$EXE" tabix -o $D/small.squeezed.slice.spvcf $D/small.squeezed.spvcf.gz chr21:5143000-5219900
+"$EXE" tabix -o $D/small.squeezed.slice.spvcf $D/small.squeezed.spvcf.gz chr21:5143000-5226000
 is "$?" "0" "tabix slice"
 
 is "$(egrep -o "spVCF_checkpointPOS=[0-9]+" $D/small.squeezed.slice.spvcf | uniq -c | tr -d ' ' | tr '\n' ' ')" \
-   "270spVCF_checkpointPOS=5143363 " \
+   "497spVCF_checkpointPOS=5143363 28spVCF_checkpointPOS=5225415 " \
    "slice checkpoint"
 
 "$EXE" decode $D/small.squeezed.slice.spvcf > $D/small.squeezed.slice.vcf
@@ -67,7 +67,7 @@ is "$?" "0" "decode tabix slice"
 
 bgzip -c $D/small.squeezed.roundtrip.vcf > $D/small.squeezed.roundtrip.vcf.gz
 tabix $D/small.squeezed.roundtrip.vcf.gz
-tabix $D/small.squeezed.roundtrip.vcf.gz chr21:5143000-5219900 > $D/small.squeezed.roundtrip.slice.vcf
+tabix $D/small.squeezed.roundtrip.vcf.gz chr21:5143000-5226000 > $D/small.squeezed.roundtrip.slice.vcf
 is "$(cat $D/small.squeezed.slice.vcf | grep -v ^# | sha256sum)" \
    "$(cat $D/small.squeezed.roundtrip.slice.vcf | grep -v ^# | sha256sum)" \
    "slice fidelity"
