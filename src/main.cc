@@ -99,7 +99,7 @@ spVCF::transcode_stats multithreaded_encode(CodecMode mode, uint64_t checkpoint_
         }
         input_complete = true;
     }
-    if (input_stream.bad()) {
+    if (!input_stream.eof() || input_stream.bad()) {
         throw runtime_error("I/O error");
     }
 
