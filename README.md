@@ -67,7 +67,7 @@ $ bgzip -dc my.spvcf.gz | ./spvcf decode > my.decoded.vcf
 
 There's also `spvcf squeeze` to apply the QC squeezing transformation to a pVCF, without the sparse quote-encoding.
 
-The single-threaded encoder is quite efficient. The multithreaded version is capable of higher throughput in favorable circumstances, but incurs more memory usage and copying; it should be used only with verification that it actually helps! Its memory usage scales with threads and period.
+The multithreaded encoder should be used only if the single-threaded version is a proven bottleneck. It's capable of higher throughput in favorable circumstances, but trades off memory usage and copying. The memory usage scales with threads and period.
 
 ### Tabix slicing
 
