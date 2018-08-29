@@ -36,6 +36,7 @@ Reads VCF text from standard input if filename is empty or -
 Options:
   -o,--output out.spvcf  Write to out.spvcf instead of standard output
   -p,--period P          Ensure checkpoints (full dense rows) at this period or less (default: 1000)
+  -t,--threads N         Use multithreaded encoder with this many worker threads [EXPERIMENTAL]
   -q,--quiet             Suppress statistics printed to standard error
   -h,--help              Show this help message
 
@@ -65,6 +66,8 @@ $ bgzip -dc my.spvcf.gz | ./spvcf decode > my.decoded.vcf
 ```
 
 There's also `spvcf squeeze` to apply the QC squeezing transformation to a pVCF, without the sparse quote-encoding.
+
+The multithreaded encoder should be used only if the single-threaded version is a proven bottleneck. It's capable of higher throughput in favorable circumstances, but trades off memory usage and copying. The memory usage scales with threads and period.
 
 ### Tabix slicing
 
