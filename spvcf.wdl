@@ -2,8 +2,8 @@ task spvcf {
     File in_gz
     Boolean squeeze = false
     Boolean decode = false
-    Boolean multithread = false
-    String release = "v0.3.0"
+    Boolean multithread_encode = false
+    String release = "v0.5.0"
 
     parameter_meta {
         in_gz: "stream"
@@ -18,7 +18,7 @@ task spvcf {
         chmod +x spvcf bgzip
 
         threads_arg=""
-        if [ "${multithread}" == "true" ]; then
+        if [ "${multithread_encode}" == "true" ]; then
             threads_arg="--threads $(nproc)"
         fi
 

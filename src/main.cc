@@ -132,7 +132,7 @@ void help_codec(CodecMode mode) {
                  << "Reads VCF text from standard input if filename is empty or -" << endl << endl
                  << "Options:" << endl
                  << "  -o,--output out.vcf    Write to out.vcf instead of standard output" << endl
-                 << "  -t,--threads N         Use multithreaded encoder with this number of worker threads" << endl
+                 << "  -t,--threads N         Use multithreaded encoder with this many worker threads [EXPERIMENTAL]" << endl
                  << "  -q,--quiet             Suppress statistics printed to standard error" << endl
                  << "  -h,--help              Show this help message" << endl << endl;
             cout << "Squeezing is a lossy transformation to reduce pVCF size and increase compressibility." << endl

@@ -18,7 +18,7 @@ struct transcode_stats {
     uint64_t checkpoints = 0;      // checkpoints (purposely dense rows to aid partial decoding)
 
     void operator+=(const transcode_stats& rhs) {
-        N += rhs.N;
+        // do NOT add N.
         lines += rhs.lines;
         sparse_cells += rhs.sparse_cells;
         sparse75_lines += rhs.sparse75_lines;
