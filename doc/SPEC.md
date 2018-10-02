@@ -10,14 +10,16 @@ Project VCF (pVCF; aka multi-sample VCF) is the prevailing file format for small
 
 spVCF adopts from pVCF the tab-delimited text format with header, and the first nine columns providing all variant-level details. The sparse encoding concerns the genotype matrix `V[i,j]`, *i* indexing variant sites and *j* indexing the *N* samples, written across tab-delimited columns ten through 9+*N* of the pVCF text file. Each cell `V[i,j]` is a colon-delimited text string including the genotype and various QC measures (DP, AD, PL, etc.).
 
-In the spVCF encoding, cells are first replaced with a double-quotation mark `"` if they're identical to the cell *above*: 
+In the spVCF encoding, cells are first replaced with a double-quotation mark `"` if they're (i) identical to the cell *above*, and (ii) their GT field is reference-identical or non-called:
 
 ```
-S[i,j] :=   "    if i>0 and V[i,j] == V[i-1,j],
+S[i,j] :=   "    if i>0 and V[i,j] == V[i-1,j] and V[i,j]["GT"] in ["0/0","0|0","./.",".|."],
           V[i,j] otherwise.
 ```
 
 Here 'identical' covers all QC measures exactly. Such exact repetition is common in pVCF produced using tools like [GATK GenotypeGVCFs](https://software.broadinstitute.org/gatk/documentation/tooldocs/3.8-0/org_broadinstitute_gatk_tools_walkers_variantutils_GenotypeGVCFs.php) and [GLnexus](https://github.com/dnanexus-rnd/GLnexus), which merge gVCF or similar files summarizing reference coverage in lengthy bands.
+
+For clarity, the list of "quotable" GTs enumerated above shows diploid genotypes only. In general, quotable GTs are those whose constituent allele calls are either all reference (0), or all non-called (.).
 
 Second, within each row of `S`, consecutive runs of quotation marks are abbreviated with a text integer, so for example a horizontal run of 42 quotes is written `"42` and tab-delimited from adjacent cells. The result is a ragged, tab-delimited matrix.
 
@@ -59,7 +61,7 @@ With checkpoints, it's possible to reuse the familiar `bgzip` and `tabix` utilit
 
 Lastly, spVCF suggests the following convention to remove typically-unneeded detail from the matrix, and increase the compressibility of what remains, prior to the sparse encoding. In any cell with QC measures indicating zero non-reference reads (typically `AD=d,0` for some *d*, but this depends on how the pVCF-generating pipeline expresses non-reference read depth), report only `GT` and `DP` and omit any other fields. Also, round `DP` down to a power of two (0, 1, 2, 4, 8, 16, ...).
 
-This "squeezing" requires the encoder to reorder the colon-delimited fields in each cell so that `GT` and `DP` precede any other fields. Then it's valid for a subset of cells to omit remaining fields completely, as permitted by VCF. The FORMAT specification in column 9 of each line must reflect this reordering.
+This "squeezing" requires the encoder to reorder the colon-delimited fields in each cell so that `GT` and `DP` precede any other fields. Then it's valid for a subset of cells to omit remaining fields completely, as permitted by VCF. The FORMAT specification in column 9 of each line must reflect this reordering. Notice that not all reference-identical genotype calls are necessarily squeezed, namely if the QC data indicate even one non-reference read.
 
 The optional squeezing transformation can be applied to any pVCF, usually to great benefit, whether or not the spVCF sparse encoding is also used.
 

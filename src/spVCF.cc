@@ -158,6 +158,7 @@ public:
     const char* ProcessLine(char* input_line) override;
 
 private:
+    bool unquotableGT(const char* entry);
     void Squeeze(const vector<char*>& line);
 
     uint64_t checkpoint_period_ = 0;
@@ -172,6 +173,7 @@ private:
     vector<string> roundDP_table_;
 };
 
+#include <iostream>
 const char* EncoderImpl::ProcessLine(char* input_line) {
     ++line_number_;
     // Pass through header lines
@@ -187,8 +189,11 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
     if (tokens.size() < 10) {
         fail("Invalid: fewer than 10 columns");
     }
-    uint64_t N = tokens.size() - 9;
+    if (strncmp(tokens[8], "GT:", 3) && strcmp(tokens[8], "GT")) {
+        fail("cells don't start with genotype (GT)");
+    }
 
+    uint64_t N = tokens.size() - 9;
     if (dense_entries_.empty()){ // First line: allocate the dense entries
         dense_entries_.resize(N);
         stats_.N = N;
@@ -248,7 +253,7 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
         if (*t == '"') {
             fail("Input seems to be sparse-encoded already");
         }
-        if (m.empty() || strcmp(m.c_str(), t) != 0) {
+        if (m.empty() || strcmp(m.c_str(), t) != 0 || unquotableGT(t)) {
             // Entry doesn't match the last one recorded densely for this
             // column. Output any accumulated run of quotes in the current row,
             // then this new entry, and update the state appropriately.
@@ -323,6 +328,33 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
     return buffer_.Get();
 }
 
+// Determine if the entry's GT makes it "unquotable", meaning the called
+// allele(s) don't consist of all 0 or all .
+// A half-call like ./0 is considered unquotable.
+// ASSUMES GT is the first FORMAT field (as required by VCF)
+bool EncoderImpl::unquotableGT(const char* entry) {
+    bool zero = false, dot = false;
+    if (*entry == 0 || *entry == ':') {
+        fail("missing GT entry");
+    }
+    for (; *entry && *entry != ':'; entry++) {
+        switch (*entry) {
+            case '0':
+                zero = true;
+                break;
+            case '.':
+                dot = true;
+                break;
+            case '/':
+            case '|':
+                break;
+            default:
+                return true;
+        }
+    }
+    return (zero == dot);
+}
+
 // Truncate cells to GT:DP, and round DP down to a power of two, if
 //   - AD is present and indicates zero read depth for alternate alleles;
 //   - VR is present and zero
@@ -347,9 +379,7 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
     size_t formatsz = split(line[8], ':', back_inserter(format));
 
     // locate fields of interest
-    if (format[0] != "GT") {
-        fail("cells don't start with genotype (GT)");
-    }
+    assert(format[0] == "GT");
     int iDP = -1;
     auto pDP = find(format.begin(), format.end(), "DP");
     if (pDP != format.end()) {
