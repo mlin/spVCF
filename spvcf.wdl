@@ -3,7 +3,7 @@ task spvcf {
     Boolean squeeze = false
     Boolean decode = false
     Boolean multithread_encode = false
-    String release = "v0.5.0"
+    String release = "v0.6.0"
 
     parameter_meta {
         in_gz: "stream"
