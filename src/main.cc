@@ -106,6 +106,20 @@ spVCF::transcode_stats multithreaded_encode(CodecMode mode, uint64_t checkpoint_
     return sink.get();
 }
 
+void check_input_format(const string& first_line) {
+    const string vcf_startswith("##fileformat=VCF");
+    if (first_line.size() < vcf_startswith.size() ||
+        first_line.substr(0, vcf_startswith.size()) != vcf_startswith) {
+        if (first_line.size() >= 2 && uint8_t(first_line[0]) == 0x1F && uint8_t(first_line[1]) == 0x8B) {
+            throw runtime_error("input appears gzipped; decompress or pipe through `gzip -dc` for use with this tool");
+        }
+        cerr << "[WARN] input doesn't begin with "
+             << vcf_startswith
+             << "; this tool expects uncompressed VCF/spVCF format"
+             << endl;
+    }
+}
+
 void help_codec(CodecMode mode) {
     switch (mode) {
         case CodecMode::encode:
@@ -272,7 +286,12 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
             tc = spVCF::NewEncoder(checkpoint_period, (mode == CodecMode::encode), squeeze);
         }
         string input_line;
+        bool first = true;
         for (; getline(*input_stream, input_line); ) {
+            if (first) {
+                check_input_format(input_line);
+                first = false;
+            }
             *output_stream << tc->ProcessLine(&input_line[0]);
             *output_stream << '\n';
             if (input_stream->fail() || input_stream->bad() || !output_stream->good()) {
