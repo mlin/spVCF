@@ -17,9 +17,9 @@ S[i,j] :=   "    if i>0 and V[i,j] == V[i-1,j] and V[i,j]["GT"] in ["0/0","0|0",
           V[i,j] otherwise.
 ```
 
-Here 'identical' covers all QC measures exactly. Such exact repetition is common in pVCF produced using tools like [GATK GenotypeGVCFs](https://software.broadinstitute.org/gatk/documentation/tooldocs/3.8-0/org_broadinstitute_gatk_tools_walkers_variantutils_GenotypeGVCFs.php) and [GLnexus](https://github.com/dnanexus-rnd/GLnexus), which merge gVCF or similar files summarizing reference coverage in lengthy bands.
+Here 'identical' covers all the QC measures exactly, assuming they have the same order from row to row. Such exact repetition is common in pVCF produced using tools like [GATK GenotypeGVCFs](https://software.broadinstitute.org/gatk/documentation/tooldocs/3.8-0/org_broadinstitute_gatk_tools_walkers_variantutils_GenotypeGVCFs.php) and [GLnexus](https://github.com/dnanexus-rnd/GLnexus), which merge gVCF or similar files summarizing reference coverage in lengthy bands.
 
-For clarity, the list of "quotable" GTs enumerated above shows diploid genotypes only. In general, quotable GTs are those whose constituent allele calls are either all reference (0), or all non-called (.).
+For clarity, the list of "quotable" GTs enumerated above shows diploid genotypes only; in general, quotable GTs are those whose constituent allele calls are either all reference (0), or all non-called (.).
 
 Second, within each row of `S`, consecutive runs of quotation marks are abbreviated with a text integer, so for example a horizontal run of 42 quotes is written `"42` and tab-delimited from adjacent cells. The result is a ragged, tab-delimited matrix.
 
