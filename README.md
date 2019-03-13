@@ -39,16 +39,11 @@ Reads VCF text from standard input if filename is empty or -
 
 Options:
   -o,--output out.spvcf  Write to out.spvcf instead of standard output
+  -n,--no-squeeze        Disable lossy QC squeezing transformation (lossless run-encoding only)
   -p,--period P          Ensure checkpoints (full dense rows) at this period or less (default: 1000)
-  -t,--threads N         Use multithreaded encoder with this many worker threads [EXPERIMENTAL]
+  -t,--threads N         Use multithreaded encoder with this number of worker threads
   -q,--quiet             Suppress statistics printed to standard error
   -h,--help              Show this help message
-
-Lossy transformation to increase compression: 
-  -S,--squeeze           Truncate cells to GT:DP, with DP rounded down to a power of two, if: 
-                         - AD is present and indicates zero read depth for alternate alleles; OR
-                         - VR is present and zero
-                         Reorders fields within all cells.
 ```
 
 ```
@@ -69,7 +64,7 @@ $ bgzip -dc my.vcf.gz | ./spvcf encode | bgzip -c > my.spvcf.gz
 $ bgzip -dc my.spvcf.gz | ./spvcf decode > my.decoded.vcf
 ```
 
-There's also `spvcf squeeze` to apply the QC squeezing transformation to a pVCF, without the sparse quote-encoding.
+There's also `spvcf squeeze` to apply the QC squeezing transformation to a pVCF, without the sparse quote-encoding. This produces valid pVCF that's typically much smaller, although not as small as spVCF.
 
 The multithreaded encoder should be used only if the single-threaded version is a proven bottleneck. It's capable of higher throughput in favorable circumstances, but trades off memory usage and copying. The memory usage scales with threads and period.
 
