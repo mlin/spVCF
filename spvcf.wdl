@@ -1,9 +1,9 @@
 task spvcf {
     File in_gz
-    Boolean squeeze = false
+    Boolean no_squeeze = false
     Boolean decode = false
     Boolean multithread_encode = false
-    String release = "v0.6.0"
+    String release = "v0.7.0"
 
     parameter_meta {
         in_gz: "stream"
@@ -26,7 +26,7 @@ task spvcf {
         nm=$(basename "$nm" .spvcf.gz)
         nm="$nm.${if decode then 'vcf.gz' else 'spvcf.gz'}"
         mkdir out
-        pigz -dc "${in_gz}" | ./spvcf ${if decode then 'decode' else 'encode'} ${if squeeze then '-S' else ''} $threads_arg | ./bgzip -@ $(nproc) > out/$nm
+        pigz -dc "${in_gz}" | ./spvcf ${if decode then 'decode' else 'encode'} ${if no_squeeze then '--no-squeeze' else ''} $threads_arg | ./bgzip -@ $(nproc) > out/$nm
     }
 
     runtime {
