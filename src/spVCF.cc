@@ -178,6 +178,12 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
     ++line_number_;
     // Pass through header lines
     if (*input_line == 0 || *input_line == '#') {
+        if (sparse_ && strncmp(input_line, "##fileformat=", 13) == 0) {
+            char* format = input_line + 13;
+            buffer_.Clear();
+            buffer_ << "##fileformat=spVCF" << GIT_REVISION << ";" << format;
+            return buffer_.Get();
+        }
         return input_line;
     }
     ++stats_.lines;
@@ -537,6 +543,14 @@ const char* DecoderImpl::ProcessLine(char *input_line) {
     ++line_number_;
     // Pass through header lines
     if (*input_line == 0 || *input_line == '#') {
+        if (strncmp(input_line, "##fileformat=spVCF", 18) == 0) {
+            char* format = strchr(input_line, ';');
+            if (format) {
+                buffer_.Clear();
+                buffer_ << "##fileformat=" << (format+1);
+                return buffer_.Get();
+            }
+        }
         return input_line;
     }
     ++stats_.lines;

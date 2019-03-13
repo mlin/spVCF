@@ -27,7 +27,7 @@ set(HTSLIB_SOURCE_DIR ${source_dir})
 ExternalProject_Get_Property(htslib binary_dir)
 set(HTSLIB_BINARY_DIR ${binary_dir})
 
-execute_process(COMMAND git describe --tags --long --dirty --always
+execute_process(COMMAND git describe --tags --long --always
                 OUTPUT_VARIABLE GIT_REVISION OUTPUT_STRIP_TRAILING_WHITESPACE)
                 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGIT_REVISION=\"\\\"${GIT_REVISION}\\\"\"")
 

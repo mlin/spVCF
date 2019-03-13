@@ -70,7 +70,7 @@ The multithreaded encoder should be used only if the single-threaded version is 
 
 ### Tabix slicing
 
-If the regular `bgzip` and `tabix` utilities are used to block-compress and index a spVCF file, then `spvcf tabix` can take a genomic range slice from it, extracting spVCF which decodes standalone. (The regular `tabix` utility generates the index, but using it to take the slice would yield a broken fragment.) Internally, this entails decoding a small bit of the spVCF, determined by the `spvcf encode --period` option.
+If the familiar `bgzip` and `tabix -p vcf` utilities are used to block-compress and index a spVCF file, then `spvcf tabix` can take a genomic range slice from it, extracting spVCF which decodes standalone. (The regular `tabix` utility generates the index, but using it to take the slice would yield a broken fragment.) Internally, this entails decoding a small bit of the spVCF, determined by the `spvcf encode --period` option.
 
 ```
 spvcf tabix [options] in.spvcf.gz chr1:1000-2000 [chr2 ...]
@@ -85,6 +85,6 @@ Example:
 
 ```
 $ ./spvcf encode my.vcf | bgzip -c > my.spvcf.gz
-$ tabix my.spvcf.gz
+$ tabix -p vcf my.spvcf.gz
 $ ./spvcf tabix my.spvcf.gz chr21:5143000-5219900 | ./spvcf decode > slice.vcf
 ```
