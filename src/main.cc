@@ -17,6 +17,20 @@ enum class CodecMode {
     decode
 };
 
+void check_input_format(CodecMode mode, const string& first_line) {
+    if (first_line.size() >= 2 && uint8_t(first_line[0]) == 0x1F && uint8_t(first_line[1]) == 0x8B) {
+        throw runtime_error("input appears gzipped; decompress or pipe through `gzip -dc` for use with this tool");
+    }
+    const string vcf_startswith = (mode == CodecMode::decode) ? "##fileformat=spVCF" : "##fileformat=VCF";
+    if (first_line.size() < vcf_startswith.size() ||
+        first_line.substr(0, vcf_startswith.size()) != vcf_startswith) {
+        cerr << "[WARN] input doesn't begin with "
+             << vcf_startswith
+             << "; this tool expects uncompressed VCF/spVCF format"
+             << endl;
+    }
+}
+
 // Run encoder in a multithreaded way by buffering batches of input lines and
 // spawning a thread to work on each batch. Below, main_codec has a simpler
 // single-threaded default way to run the codec.
@@ -75,22 +89,25 @@ spVCF::transcode_stats multithreaded_encode(CodecMode mode, uint64_t checkpoint_
     // for some of them to drain.
     auto input_batch = make_shared<vector<string>>();
     string input_line;
-    for (; getline(input_stream, input_line); ) {
-        input_batch->push_back(move(input_line));
-        assert(input_line.empty());
-        if (input_batch->size() >= checkpoint_period) {
-            while (true) {
-                lock_guard<mutex> lock(mu);
-                if (output_batches.size() >= thread_count) {
-                    using namespace chrono_literals;
-                    this_thread::sleep_for(100us);
-                    continue;
+    if (getline(input_stream, input_line)) {
+        check_input_format(mode, input_line);
+        do {
+            input_batch->push_back(move(input_line));
+            assert(input_line.empty());
+            if (input_batch->size() >= checkpoint_period) {
+                while (true) {
+                    lock_guard<mutex> lock(mu);
+                    if (output_batches.size() >= thread_count) {
+                        using namespace chrono_literals;
+                        this_thread::sleep_for(100us);
+                        continue;
+                    }
+                    output_batches.push_back(async(launch::async, worker, input_batch));
+                    break;
                 }
-                output_batches.push_back(async(launch::async, worker, input_batch));
-                break;
+                input_batch = make_shared<vector<string>>();
             }
-            input_batch = make_shared<vector<string>>();
-        }
+        } while (getline(input_stream, input_line));
     }
     {
         lock_guard<mutex> lock(mu);
@@ -104,20 +121,6 @@ spVCF::transcode_stats multithreaded_encode(CodecMode mode, uint64_t checkpoint_
     }
 
     return sink.get();
-}
-
-void check_input_format(const string& first_line) {
-    const string vcf_startswith("##fileformat=VCF");
-    if (first_line.size() < vcf_startswith.size() ||
-        first_line.substr(0, vcf_startswith.size()) != vcf_startswith) {
-        if (first_line.size() >= 2 && uint8_t(first_line[0]) == 0x1F && uint8_t(first_line[1]) == 0x8B) {
-            throw runtime_error("input appears gzipped; decompress or pipe through `gzip -dc` for use with this tool");
-        }
-        cerr << "[WARN] input doesn't begin with "
-             << vcf_startswith
-             << "; this tool expects uncompressed VCF/spVCF format"
-             << endl;
-    }
 }
 
 void help_codec(CodecMode mode) {
@@ -280,19 +283,17 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
             tc = spVCF::NewEncoder(checkpoint_period, (mode == CodecMode::encode), squeeze);
         }
         string input_line;
-        bool first = true;
-        for (; getline(*input_stream, input_line); ) {
-            if (first) {
-                check_input_format(input_line);
-                first = false;
-            }
-            *output_stream << tc->ProcessLine(&input_line[0]);
-            *output_stream << '\n';
-            if (input_stream->fail() || input_stream->bad() || !output_stream->good()) {
-                throw runtime_error("I/O error");
-            }
+        if (getline(*input_stream, input_line)) {
+            check_input_format(mode, input_line);
+            do {
+                *output_stream << tc->ProcessLine(&input_line[0]);
+                *output_stream << '\n';
+                if (input_stream->fail() || input_stream->bad() || !output_stream->good()) {
+                    throw runtime_error("I/O error");
+                }
+            } while (getline(*input_stream, input_line));
         }
-        if (input_stream->bad()) {
+        if (!input_stream->eof() || input_stream->bad()) {
             throw runtime_error("I/O error");
         }
         stats = tc->Stats();

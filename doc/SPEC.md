@@ -23,6 +23,8 @@ For clarity, the list of "quotable" GTs enumerated above shows diploid genotypes
 
 Second, within each row of `S`, consecutive runs of quotation marks are abbreviated with a text integer, so for example a horizontal run of 42 quotes is written `"42` and tab-delimited from adjacent cells. The result is a ragged, tab-delimited matrix.
 
+The first header line of a spVCF file begins with `##fileformat=spVCF`, followed by a version/tag, semicolon, and finally the original format of the encoded VCF file (e.g. `VCF4.2`).
+
 **Worked example**
 
 ```

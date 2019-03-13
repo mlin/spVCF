@@ -15,11 +15,11 @@ plan tests 25
 pigz -dc "$HERE/data/small.vcf.gz" > $D/small.vcf
 "$EXE" encode --no-squeeze -o $D/small.spvcf $D/small.vcf
 is "$?" "0" "filename I/O"
-is "$(cat $D/small.spvcf | wc -c)" "37095284" "filename I/O output size"
+is "$(cat $D/small.spvcf | wc -c)" "37095307" "filename I/O output size"
 
 pigz -dc "$HERE/data/small.vcf.gz" | "$EXE" encode -n -q > $D/small.spvcf
 is "$?" "0" "piped I/O"
-is "$(cat $D/small.spvcf | wc -c)" "37095284" "piped I/O output size"
+is "$(cat $D/small.spvcf | wc -c)" "37095307" "piped I/O output size"
 
 "$EXE" decode -o $D/small.roundtrip.vcf $D/small.spvcf
 is "$?" "0" "decode"
@@ -35,7 +35,7 @@ is "$(egrep -o "spVCF_checkpointPOS=[0-9]+" $D/small.spvcf | uniq | cut -f2 -d =
 
 "$EXE" encode -p 500 -o $D/small.squeezed.spvcf $D/small.vcf
 is "$?" "0" "squeeze"
-is "$(cat $D/small.squeezed.spvcf | wc -c)" "17553478" "squeezed output size"
+is "$(cat $D/small.squeezed.spvcf | wc -c)" "17553501" "squeezed output size"
 
 "$EXE" decode -q -o $D/small.squeezed.roundtrip.vcf $D/small.squeezed.spvcf
 is "$?" "0" "squeezed roundtrip decode"
@@ -54,7 +54,7 @@ is "$(egrep -o "spVCF_checkpointPOS=[0-9]+" $D/small.squeezed.spvcf | uniq | cut
    "squeezed checkpoint positions"
 
 bgzip -c $D/small.squeezed.spvcf > $D/small.squeezed.spvcf.gz
-tabix $D/small.squeezed.spvcf.gz
+tabix -p vcf $D/small.squeezed.spvcf.gz
 "$EXE" tabix -o $D/small.squeezed.slice.spvcf $D/small.squeezed.spvcf.gz chr21:5143000-5226000
 is "$?" "0" "tabix slice"
 
@@ -66,8 +66,8 @@ is "$(egrep -o "spVCF_checkpointPOS=[0-9]+" $D/small.squeezed.slice.spvcf | uniq
 is "$?" "0" "decode tabix slice"
 
 bgzip -c $D/small.squeezed.roundtrip.vcf > $D/small.squeezed.roundtrip.vcf.gz
-tabix $D/small.squeezed.roundtrip.vcf.gz
-tabix $D/small.squeezed.roundtrip.vcf.gz chr21:5143000-5226000 > $D/small.squeezed.roundtrip.slice.vcf
+tabix -p vcf $D/small.squeezed.roundtrip.vcf.gz
+tabix -p vcf $D/small.squeezed.roundtrip.vcf.gz chr21:5143000-5226000 > $D/small.squeezed.roundtrip.slice.vcf
 is "$(cat $D/small.squeezed.slice.vcf | grep -v ^# | sha256sum)" \
    "$(cat $D/small.squeezed.roundtrip.slice.vcf | grep -v ^# | sha256sum)" \
    "slice fidelity"
@@ -79,7 +79,7 @@ is "$(cat $D/small.squeezed.slice_chr21.spvcf | sha256sum)" \
 
 pigz -dc "$HERE/data/small.vcf.gz" | "$EXE" encode -n -t $(nproc) - > $D/small.mt.spvcf
 is "$?" "0" "multithreaded encode"
-is "$(cat $D/small.mt.spvcf | wc -c)" "37091691" "multithreaded output size"
+is "$(cat $D/small.mt.spvcf | wc -c)" "37091714" "multithreaded output size"
 
 time "$EXE" decode -o $D/small.mt.roundtrip.vcf $D/small.mt.spvcf
 is "$?" "0" "decode from multithreaded"
