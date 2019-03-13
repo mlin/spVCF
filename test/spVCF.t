@@ -13,11 +13,11 @@ mkdir -p $D
 plan tests 25
 
 pigz -dc "$HERE/data/small.vcf.gz" > $D/small.vcf
-"$EXE" encode -o $D/small.spvcf $D/small.vcf
+"$EXE" encode --no-squeeze -o $D/small.spvcf $D/small.vcf
 is "$?" "0" "filename I/O"
 is "$(cat $D/small.spvcf | wc -c)" "37095284" "filename I/O output size"
 
-pigz -dc "$HERE/data/small.vcf.gz" | "$EXE" encode -q > $D/small.spvcf
+pigz -dc "$HERE/data/small.vcf.gz" | "$EXE" encode -n -q > $D/small.spvcf
 is "$?" "0" "piped I/O"
 is "$(cat $D/small.spvcf | wc -c)" "37095284" "piped I/O output size"
 
@@ -33,7 +33,7 @@ is "$(egrep -o "spVCF_checkpointPOS=[0-9]+" $D/small.spvcf | uniq | cut -f2 -d =
    "5030088 5142716 5232967 5252665 5273811 " \
    "checkpoint positions"
 
-"$EXE" encode -S -p 500 -o $D/small.squeezed.spvcf $D/small.vcf
+"$EXE" encode -p 500 -o $D/small.squeezed.spvcf $D/small.vcf
 is "$?" "0" "squeeze"
 is "$(cat $D/small.squeezed.spvcf | wc -c)" "17553478" "squeezed output size"
 
@@ -77,7 +77,7 @@ is "$(cat $D/small.squeezed.slice_chr21.spvcf | sha256sum)" \
    "$(cat $D/small.squeezed.spvcf | sha256sum)" \
    "chromosome slice"
 
-pigz -dc "$HERE/data/small.vcf.gz" | "$EXE" encode -t $(nproc) - > $D/small.mt.spvcf
+pigz -dc "$HERE/data/small.vcf.gz" | "$EXE" encode -n -t $(nproc) - > $D/small.mt.spvcf
 is "$?" "0" "multithreaded encode"
 is "$(cat $D/small.mt.spvcf | wc -c)" "37091691" "multithreaded output size"
 

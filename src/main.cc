@@ -129,33 +129,27 @@ void help_codec(CodecMode mode) {
                  << "Reads VCF text from standard input if filename is empty or -" << endl << endl
                  << "Options:" << endl
                  << "  -o,--output out.spvcf  Write to out.spvcf instead of standard output" << endl
+                 << "  -n,--no-squeeze        Disable lossy QC squeezing transformation (lossless run-encoding only)" << endl
                  << "  -p,--period P          Ensure checkpoints (full dense rows) at this period or less (default: 1000)" << endl
                  << "  -t,--threads N         Use multithreaded encoder with this number of worker threads" << endl
                  << "  -q,--quiet             Suppress statistics printed to standard error" << endl
-                 << "  -h,--help              Show this help message" << endl << endl
-                 << "Lossy transformation to increase compression: " << endl
-                 << "  -S,--squeeze           Truncate cells to GT:DP, with DP rounded down to a power of two, if: " << endl
-                 << "                         - AD is present and indicates zero read depth for alternate alleles; OR" << endl
-                 << "                         - VR is present and zero" << endl
-                 << "                         Reorders fields within all cells."<< endl << endl;
+                 << "  -h,--help              Show this help message" << endl << endl;
             break;
         case CodecMode::squeeze_only:
-            cout << "spvcf squeeze: Squeeze Project VCF (without sparse encoding)" << endl
+            cout << "spvcf squeeze: Squeeze Project VCF (without run-encoding)" << endl
                  << GIT_REVISION << "    " << __TIMESTAMP__ << endl << endl;
             cout << "spvcf squeeze [options] [in.vcf|-]" << endl
                  << "Reads VCF text from standard input if filename is empty or -" << endl << endl
                  << "Options:" << endl
                  << "  -o,--output out.vcf    Write to out.vcf instead of standard output" << endl
-                 << "  -t,--threads N         Use multithreaded encoder with this many worker threads [EXPERIMENTAL]" << endl
+                 << "  -t,--threads N         Use multithreaded encoder with this many worker threads" << endl
                  << "  -q,--quiet             Suppress statistics printed to standard error" << endl
                  << "  -h,--help              Show this help message" << endl << endl;
-            cout << "Squeezing is a lossy transformation to reduce pVCF size and increase compressibility." << endl
+            cout << "Squeezing is a lossy transformation to selectively reduce entropy in pVCF QC values." << endl
                  << "Truncate cells to GT:DP, with DP rounded down to a power of two, if: " << endl
                  << "- AD is present and indicates zero read depth for alternate alleles; OR" << endl
                  << "- VR is present and zero" << endl
-                 << "Reorders fields within all cells. If sparse encoding is desired, spvcf encode --squeze" << endl
-                 << "is equivalent to but more efficient than spvcf squeeze | spvcf encode."
-                 << endl << endl;
+                 << "May reorder fields within all cells." << endl << endl;
             break;
         case CodecMode::decode:
             cout << "spvcf decode: decode Sparse Project VCF to Project VCF" << endl;
@@ -171,7 +165,7 @@ void help_codec(CodecMode mode) {
 }
 
 int main_codec(int argc, char *argv[], CodecMode mode) {
-    bool squeeze = mode == CodecMode::squeeze_only ? true : false;
+    bool squeeze = true;
     bool quiet = false;
     string output_filename;
     uint64_t checkpoint_period = 1000;
@@ -179,7 +173,7 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
 
     static struct option long_options[] = {
         {"help", no_argument, 0, 'h'},
-        {"squeeze", no_argument, 0, 'S'},
+        {"no-squeeze", no_argument, 0, 'n'},
         {"period", required_argument, 0, 'p'},
         {"threads", required_argument, 0, 't'},
         {"quiet", no_argument, 0, 'q'},
@@ -188,18 +182,18 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
     };
 
     int c;
-    while (-1 != (c = getopt_long(argc, argv, "hSp:qo:t:",
+    while (-1 != (c = getopt_long(argc, argv, "hnp:qo:t:",
                                   long_options, nullptr))) {
         switch (c) {
             case 'h':
                 help_codec(mode);
                 return 0;
-            case 'S':
+            case 'n':
                 if (mode != CodecMode::encode) {
                     help_codec(mode);
                     return -1;
                 }
-                squeeze = true;
+                squeeze = false;
                 break;
             case 'p':
                 if (mode == CodecMode::decode) {
