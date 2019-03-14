@@ -1,12 +1,10 @@
-task spvcf {
-    File in_gz
-    Boolean no_squeeze = false
-    Boolean decode = false
-    Boolean multithread_encode = false
+task spvcf_encode {
+    File vcf_gz
+    Boolean multithread = false
     String release = "v0.7.0"
 
     parameter_meta {
-        in_gz: "stream"
+        vcf_gz: "stream"
     }
 
     command {
@@ -18,15 +16,14 @@ task spvcf {
         chmod +x spvcf bgzip
 
         threads_arg=""
-        if [ "${multithread_encode}" == "true" ]; then
+        if [ "${multithread}" == "true" ]; then
             threads_arg="--threads $(nproc)"
         fi
 
-        nm=$(basename "${in_gz}" .vcf.gz)
-        nm=$(basename "$nm" .spvcf.gz)
-        nm="$nm.${if decode then 'vcf.gz' else 'spvcf.gz'}"
+        nm=$(basename "${vcf_gz}" .vcf.gz)
+        nm="$nm.spvcf.gz"
         mkdir out
-        pigz -dc "${in_gz}" | ./spvcf ${if decode then 'decode' else 'encode'} ${if no_squeeze then '--no-squeeze' else ''} $threads_arg | ./bgzip -@ $(nproc) > out/$nm
+        pigz -dc "${vcf_gz}" | ./spvcf encode $threads_arg | ./bgzip -@ $(nproc) > "out/$nm"
     }
 
     runtime {
@@ -34,6 +31,74 @@ task spvcf {
     }
 
     output {
-        File out_gz = glob("out/*.gz")[0]
+        File spvcf_gz = glob("out/*.gz")[0]
+    }
+}
+
+task spvcf_decode {
+    File spvcf_gz
+    String release = "v0.7.0"
+
+    parameter_meta {
+        spvcf_gz: "stream"
+    }
+
+    command {
+        set -ex -o pipefail
+
+        apt-get update -qq && apt-get install -y -qq pigz wget
+        wget -nv https://github.com/mlin/spVCF/releases/download/${release}/spvcf
+        wget -nv https://github.com/dnanexus-rnd/GLnexus/raw/master/cli/dxapplet/resources/usr/local/bin/bgzip
+        chmod +x spvcf bgzip
+
+        nm=$(basename "${spvcf_gz}" .spvcf.gz)
+        nm="$nm.vcf.gz"
+        mkdir out
+        pigz -dc "${spvcf_gz}" | ./spvcf decode | ./bgzip -@ $(nproc) > "out/$nm"
+    }
+
+    runtime {
+        docker: "ubuntu:18.04"
+    }
+
+    output {
+        File vcf_gz = glob("out/*.gz")[0]
+    }
+}
+
+task spvcf_squeeze {
+    File vcf_gz
+    Boolean multithread = false
+    String release = "v0.7.0"
+
+    parameter_meta {
+        vcf_gz: "stream"
+    }
+
+    command {
+        set -ex -o pipefail
+
+        apt-get update -qq && apt-get install -y -qq pigz wget
+        wget -nv https://github.com/mlin/spVCF/releases/download/${release}/spvcf
+        wget -nv https://github.com/dnanexus-rnd/GLnexus/raw/master/cli/dxapplet/resources/usr/local/bin/bgzip
+        chmod +x spvcf bgzip
+
+        threads_arg=""
+        if [ "${multithread}" == "true" ]; then
+            threads_arg="--threads $(nproc)"
+        fi
+
+        nm=$(basename "${vcf_gz}" .vcf.gz)
+        nm="$nm.squeeze.vcf.gz"
+        mkdir out
+        pigz -dc "${vcf_gz}" | ./spvcf squeeze $threads_arg | ./bgzip -@ $(nproc) > "out/$nm"
+    }
+
+    runtime {
+        docker: "ubuntu:18.04"
+    }
+
+    output {
+        File squeeze_vcf_gz = glob("out/*.gz")[0]
     }
 }
