@@ -34,8 +34,8 @@ void check_input_format(CodecMode mode, const string& first_line) {
 // Run encoder in a multithreaded way by buffering batches of input lines and
 // spawning a thread to work on each batch. Below, main_codec has a simpler
 // single-threaded default way to run the codec.
-spVCF::transcode_stats multithreaded_encode(CodecMode mode, uint64_t checkpoint_period, bool squeeze, size_t thread_count,
-                                            istream& input_stream, ostream& output_stream) {
+spVCF::transcode_stats multithreaded_encode(CodecMode mode, uint64_t checkpoint_period, bool squeeze, double roundDP_base,
+                                            size_t thread_count, istream& input_stream, ostream& output_stream) {
     assert(mode != CodecMode::decode);
 
     mutex mu;
@@ -76,7 +76,7 @@ spVCF::transcode_stats multithreaded_encode(CodecMode mode, uint64_t checkpoint_
 
     // worker task to process a batch of input lines into output_batches
     auto worker = [&](shared_ptr<vector<string>> input_batch) {
-        unique_ptr<spVCF::Transcoder> tc = spVCF::NewEncoder(checkpoint_period, (mode == CodecMode::encode), squeeze);
+        unique_ptr<spVCF::Transcoder> tc = spVCF::NewEncoder(checkpoint_period, (mode == CodecMode::encode), squeeze, roundDP_base);
         auto output_lines = make_shared<vector<string>>();
         for (auto& input_line : *input_batch) {
             output_lines->push_back(tc->ProcessLine(&input_line[0]));
@@ -88,13 +88,20 @@ spVCF::transcode_stats multithreaded_encode(CodecMode mode, uint64_t checkpoint_
     // for each batch. If the number of outstanding tasks hits thread_count, wait
     // for some of them to drain.
     auto input_batch = make_shared<vector<string>>();
+    size_t input_batch_size = 0;
     string input_line;
     if (getline(input_stream, input_line)) {
         check_input_format(mode, input_line);
         do {
+            if (!input_line.empty() && input_line[0] != '#') {
+                // TODO: it would be nice to cut off the batch at the end of each
+                // chromosome, to guarantee identical checkpoint positions between
+                // single- and multi-threaded encoder
+                ++input_batch_size;
+            }
             input_batch->push_back(move(input_line));
             assert(input_line.empty());
-            if (input_batch->size() >= checkpoint_period) {
+            if (input_batch_size >= checkpoint_period) {
                 while (true) {
                     lock_guard<mutex> lock(mu);
                     if (output_batches.size() >= thread_count) {
@@ -106,6 +113,7 @@ spVCF::transcode_stats multithreaded_encode(CodecMode mode, uint64_t checkpoint_
                     break;
                 }
                 input_batch = make_shared<vector<string>>();
+                input_batch_size = 0;
             }
         } while (getline(input_stream, input_line));
     }
@@ -133,6 +141,8 @@ void help_codec(CodecMode mode) {
                  << "Options:" << endl
                  << "  -o,--output out.spvcf  Write to out.spvcf instead of standard output" << endl
                  << "  -n,--no-squeeze        Disable lossy QC squeezing transformation (lossless run-encoding only)" << endl
+                 << "  -r,--resolution        Resolution parameter r for DP rounding, rDP=floor(r^floor(log_r(DP)))" << endl
+                 << "                           (default: 2.0; to increase resolution set 1.0<r<2.0)" << endl
                  << "  -p,--period P          Ensure checkpoints (full dense rows) at this period or less (default: 1000)" << endl
                  << "  -t,--threads N         Use multithreaded encoder with this number of worker threads" << endl
                  << "  -q,--quiet             Suppress statistics printed to standard error" << endl
@@ -145,6 +155,8 @@ void help_codec(CodecMode mode) {
                  << "Reads VCF text from standard input if filename is empty or -" << endl << endl
                  << "Options:" << endl
                  << "  -o,--output out.vcf    Write to out.vcf instead of standard output" << endl
+                 << "  -r,--resolution        Resolution parameter r for DP rounding, rDP=floor(r^floor(log_r(DP)))" << endl
+                 << "                           (default: 2.0; to increase resolution set 1.0<r<2.0)" << endl
                  << "  -t,--threads N         Use multithreaded encoder with this many worker threads" << endl
                  << "  -q,--quiet             Suppress statistics printed to standard error" << endl
                  << "  -h,--help              Show this help message" << endl << endl;
@@ -173,11 +185,13 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
     string output_filename;
     uint64_t checkpoint_period = 1000;
     size_t thread_count = 1;
+    double roundDP_base = 2.0;
 
     static struct option long_options[] = {
         {"help", no_argument, 0, 'h'},
         {"no-squeeze", no_argument, 0, 'n'},
         {"period", required_argument, 0, 'p'},
+        {"resolution", required_argument, 0, 'r'},
         {"threads", required_argument, 0, 't'},
         {"quiet", no_argument, 0, 'q'},
         {"output", required_argument, 0, 'o'},
@@ -185,7 +199,7 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
     };
 
     int c;
-    while (-1 != (c = getopt_long(argc, argv, "hnp:qo:t:",
+    while (-1 != (c = getopt_long(argc, argv, "hnp:r:qo:t:",
                                   long_options, nullptr))) {
         switch (c) {
             case 'h':
@@ -207,6 +221,18 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
                 checkpoint_period = strtoull(optarg, nullptr, 10);
                 if (errno) {
                     cerr << "spvcf: couldn't parse --period" << endl;
+                    return -1;
+                }
+                break;
+            case 'r':
+                if (mode == CodecMode::decode) {
+                    help_codec(mode);
+                    return -1;
+                }
+                errno=0;
+                roundDP_base = strtod(optarg, nullptr);
+                if (errno || roundDP_base <= 1.0) {
+                    cerr << "spvcf: invalid --resolution" << endl;
                     return -1;
                 }
                 break;
@@ -280,7 +306,7 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
         if (mode == CodecMode::decode) {
             tc = spVCF::NewDecoder();
         } else {
-            tc = spVCF::NewEncoder(checkpoint_period, (mode == CodecMode::encode), squeeze);
+            tc = spVCF::NewEncoder(checkpoint_period, (mode == CodecMode::encode), squeeze, roundDP_base);
         }
         string input_line;
         if (getline(*input_stream, input_line)) {
@@ -299,7 +325,7 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
         stats = tc->Stats();
     } else {
         assert(mode != CodecMode::decode);
-        stats = multithreaded_encode(mode, checkpoint_period, squeeze, thread_count,
+        stats = multithreaded_encode(mode, checkpoint_period, squeeze, roundDP_base, thread_count,
                                      *input_stream, *output_stream);
     }
 
