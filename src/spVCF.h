@@ -34,7 +34,7 @@ public:
     virtual const char* ProcessLine(char* input_line) = 0; // input_line is consumed (damaged)
     virtual transcode_stats Stats() = 0;
 };
-std::unique_ptr<Transcoder> NewEncoder(uint64_t checkpoint_period, bool sparse, bool squeeze);
+std::unique_ptr<Transcoder> NewEncoder(uint64_t checkpoint_period, bool sparse, bool squeeze, double roundDP_base);
 std::unique_ptr<Transcoder> NewDecoder();
 
 void TabixSlice(const std::string& spvcf_gz, std::vector<std::string> regions, std::ostream& out);

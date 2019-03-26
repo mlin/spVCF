@@ -151,8 +151,8 @@ protected:
 
 class EncoderImpl : public TranscoderBase {
 public:
-    EncoderImpl(uint64_t checkpoint_period, bool sparse, bool squeeze)
-        : checkpoint_period_(checkpoint_period), sparse_(sparse), squeeze_(squeeze)
+    EncoderImpl(uint64_t checkpoint_period, bool sparse, bool squeeze, double roundDP_base)
+        : checkpoint_period_(checkpoint_period), sparse_(sparse), squeeze_(squeeze), roundDP_base_(roundDP_base)
         {}
     EncoderImpl(const EncoderImpl&) = delete;
     const char* ProcessLine(char* input_line) override;
@@ -171,6 +171,7 @@ private:
 
     OStringStream buffer_;
     vector<string> roundDP_table_;
+    double roundDP_base_;
 };
 
 #include <iostream>
@@ -290,6 +291,7 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
 
     // CHECKPOINT -- return a densely-encode row -- if we've switched to a new
     // chromosome OR we've hit the specified period
+    ++since_checkpoint_;
     if (chrom_ != tokens[0] ||
         (checkpoint_period_ > 0 && since_checkpoint_ >= checkpoint_period_)) {
         buffer_.Clear();
@@ -317,7 +319,6 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
         ++stats_.checkpoints;
         return buffer_.Get();
     }
-    ++since_checkpoint_;
 
     stats_.sparse_cells += sparse_cells;
     auto sparse_pct = 100*sparse_cells/N;
@@ -370,12 +371,11 @@ bool EncoderImpl::unquotableGT(const char* entry) {
 // Each element of line is modified in-place.
 void EncoderImpl::Squeeze(const vector<char*>& line) {
     if (roundDP_table_.empty()) {
-        // precompute a lookup table of DP values, rounded down to a power of
-        // two and stringified
+        // precompute a lookup table for rounding down DP values
         roundDP_table_.push_back("0");
         for (uint64_t DP = 1; DP < 10000; DP++) {
-            uint64_t rDP = uint64_t(pow(2, floor(log2(DP))));
-            assert(rDP <= DP && DP < rDP*2);
+            uint64_t rDP = uint64_t(pow(roundDP_base_, floor(log(DP)/log(roundDP_base_))));
+            assert(rDP <= DP);
             roundDP_table_.push_back(to_string(rDP));
         }
     }
@@ -475,8 +475,8 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
                     if (DP < roundDP_table_.size()) {
                         new_cell << roundDP_table_[DP];
                     } else {
-                        uint64_t rDP = pow(2, floor(log2(DP)));
-                        assert(rDP <= DP && DP < rDP*2);
+                        uint64_t rDP = uint64_t(pow(roundDP_base_, floor(log(DP)/log(roundDP_base_))));
+                        assert(rDP <= DP);
                         new_cell << to_string(rDP);
                     }
                 } else {
@@ -524,8 +524,8 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
     }
 }
 
-unique_ptr<Transcoder> NewEncoder(uint64_t checkpoint_period, bool sparse, bool squeeze) {
-    return make_unique<EncoderImpl>(checkpoint_period, sparse, squeeze);
+unique_ptr<Transcoder> NewEncoder(uint64_t checkpoint_period, bool sparse, bool squeeze, double roundDP_base) {
+    return make_unique<EncoderImpl>(checkpoint_period, sparse, squeeze, roundDP_base);
 }
 
 class DecoderImpl : public TranscoderBase {
