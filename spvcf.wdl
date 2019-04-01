@@ -1,7 +1,7 @@
 task spvcf_encode {
     File vcf_gz
     Boolean multithread = false
-    String release = "v0.7.0"
+    String release = "v1.0.0"
 
     parameter_meta {
         vcf_gz: "stream"
@@ -37,7 +37,7 @@ task spvcf_encode {
 
 task spvcf_decode {
     File spvcf_gz
-    String release = "v0.7.0"
+    String release = "v1.0.0"
 
     parameter_meta {
         spvcf_gz: "stream"
@@ -69,7 +69,7 @@ task spvcf_decode {
 task spvcf_squeeze {
     File vcf_gz
     Boolean multithread = false
-    String release = "v0.7.0"
+    String release = "v1.0.0"
 
     parameter_meta {
         vcf_gz: "stream"
