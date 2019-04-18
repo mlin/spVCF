@@ -4,7 +4,7 @@
 
 Project VCF (pVCF; aka multi-sample VCF) is the prevailing file format for small genetic variants discovered by cohort sequencing. It encodes a two-dimensional matrix with variant sites down the rows and study participants across the columns, filled in with all the genotypes and associated QC measures (read depths, genotype likelihoods, etc.). Large cohorts harbor many rare variants, implying a sparse genotype matrix composed largely of reference-homozygous or non-called cells. But the dense pVCF format encodes this inefficiently, growing super-linearly with the cohort size.
 
-spVCF is an evolution of VCF that keeps most aspects of its tab-delimited text format, but presents the genotype matrix sparsely, by run-length encoding repetitive information about reference coverage. This is less sophisticated than some other efforts to address VCF's density and other shortcomings, but perhaps more palatable to existing VCF consumers by virtue of simplicity.
+spVCF is an evolution of VCF that keeps most aspects of its tab-delimited text format, but presents the genotype matrix sparsely, by selectively reducing QC measure entropy and run-length encoding repetitive information about reference coverage. This is less sophisticated than some other efforts to address VCF's density and other shortcomings, but perhaps more palatable to existing VCF consumers by virtue of simplicity.
 
 Further resources:
 
