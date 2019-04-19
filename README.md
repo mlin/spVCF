@@ -81,3 +81,6 @@ $ ./spvcf encode my.vcf | bgzip -c > my.spvcf.gz
 $ tabix -p vcf my.spvcf.gz
 $ ./spvcf tabix my.spvcf.gz chr21:5143000-5219900 | ./spvcf decode > slice.vcf
 ```
+## Contributing
+
+Any engagement with this open-source repository promotes the project's vitality. Pull requests, opening issues, adding comments, experience reports, ideas and critiques, are all welcome. Please don't be shy!
