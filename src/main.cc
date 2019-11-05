@@ -99,7 +99,9 @@ spVCF::transcode_stats multithreaded_encode(CodecMode mode, uint64_t checkpoint_
                 // single- and multi-threaded encoder
                 ++input_batch_size;
             }
+            size_t reserve = input_line.size() * 5 / 4;
             input_batch->push_back(move(input_line));
+            input_line.reserve(reserve);
             assert(input_line.empty());
             if (input_batch_size >= checkpoint_period) {
                 while (true) {

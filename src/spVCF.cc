@@ -115,7 +115,7 @@ private:
         return buf_size_ - cursor_;
     }
 
-    size_t grow(size_t hint = 0) {
+    void grow(size_t hint = 0) {
         buf_size_ = max(2*buf_size_, hint+buf_size_);
         auto buf = make_unique<char[]>(buf_size_+1);
         memcpy(&buf[0], &buf_[0], cursor_);
