@@ -12,9 +12,9 @@ IF(NOT CMAKE_BUILD_TYPE)
 ENDIF(NOT CMAKE_BUILD_TYPE)
 
 ExternalProject_Add(htslib
-    URL https://github.com/samtools/htslib/releases/download/1.9/htslib-1.9.tar.bz2
+    URL https://github.com/samtools/htslib/releases/download/1.10.2/htslib-1.10.2.tar.bz2
     PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external
-    CONFIGURE_COMMAND ""
+    CONFIGURE_COMMAND bash -c "autoreconf && ./configure --disable-libcurl --disable-bz2 --disable-lzma --disable-s3 --disable-gcs"
     PATCH_COMMAND sed -i "s/^CFLAGS .*$/CFLAGS = -O3 -DNDEBUG -march=ivybridge/" Makefile
     BUILD_IN_SOURCE 1
     BUILD_COMMAND bash -c "make -n && make -j$(nproc)"
@@ -38,7 +38,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
     target_compile_options(spvcf PRIVATE -fdiagnostics-color=auto -march=ivybridge -g)
     set_target_properties(spvcf PROPERTIES LINK_FLAGS "-static-libgcc -static-libstdc++ -pthread")
 endif()
-target_link_libraries(spvcf ${HTSLIB_BINARY_DIR}/libhts.a libz.a libbz2.a liblzma.a)
+target_link_libraries(spvcf ${HTSLIB_BINARY_DIR}/libhts.a libz.a libdeflate.a)
 
 include(CTest)
 add_test(NAME tests COMMAND prove -v test/spVCF.t)
