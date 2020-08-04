@@ -1,33 +1,40 @@
+version 1.0
+
 task spvcf_encode {
-    File vcf_gz
-    Boolean multithread = false
-    String release = "v1.0.0"
+    input {
+        File vcf_gz
+        Boolean multithread = false
+        String release = "v1.1.0"
+        Int cpu = if multithread then 8 else 4
+    }
 
     parameter_meta {
         vcf_gz: "stream"
     }
 
-    command {
-        set -ex -o pipefail
+    command <<<
+        set -euxo pipefail
 
-        apt-get update -qq && apt-get install -y -qq pigz wget
-        wget -nv https://github.com/mlin/spVCF/releases/download/${release}/spvcf
-        wget -nv https://github.com/dnanexus-rnd/GLnexus/raw/master/cli/dxapplet/resources/usr/local/bin/bgzip
-        chmod +x spvcf bgzip
+        apt-get -qq update && apt-get install -y wget tabix
+        wget -nv https://github.com/mlin/spVCF/releases/download/~{release}/spvcf
+        chmod +x spvcf
 
         threads_arg=""
-        if [ "${multithread}" == "true" ]; then
-            threads_arg="--threads $(nproc)"
+        if [ "~{multithread}" == "true" ]; then
+            threads_arg="--threads 4"
         fi
 
-        nm=$(basename "${vcf_gz}" .vcf.gz)
-        nm="$nm.spvcf.gz"
+        nm=$(basename "~{vcf_gz}" .vcf.gz)
+        nm="${nm}.spvcf.gz"
         mkdir out
-        pigz -dc "${vcf_gz}" | ./spvcf encode $threads_arg | ./bgzip -@ $(nproc) > "out/$nm"
-    }
+        bgzip -dc "~{vcf_gz}" | ./spvcf encode $threads_arg | bgzip -@ 4 > "out/${nm}"
+    >>>
 
     runtime {
-        docker: "ubuntu:18.04"
+        docker: "ubuntu:20.04"
+        cpu: cpu
+        memory: "~{cpu} GB"
+        disks: "local-disk ~{ceil(size(vcf_gz,'GB'))} SSD"
     }
 
     output {
@@ -36,29 +43,33 @@ task spvcf_encode {
 }
 
 task spvcf_decode {
-    File spvcf_gz
-    String release = "v1.0.0"
+    input {
+        File spvcf_gz
+        String release = "v1.1.0"
+    }
 
     parameter_meta {
         spvcf_gz: "stream"
     }
 
-    command {
-        set -ex -o pipefail
+    command <<<
+        set -euxo pipefail
 
-        apt-get update -qq && apt-get install -y -qq pigz wget
-        wget -nv https://github.com/mlin/spVCF/releases/download/${release}/spvcf
-        wget -nv https://github.com/dnanexus-rnd/GLnexus/raw/master/cli/dxapplet/resources/usr/local/bin/bgzip
-        chmod +x spvcf bgzip
+        apt-get -qq update && apt-get install -y wget tabix
+        wget -nv https://github.com/mlin/spVCF/releases/download/~{release}/spvcf
+        chmod +x spvcf
 
-        nm=$(basename "${spvcf_gz}" .spvcf.gz)
-        nm="$nm.vcf.gz"
+        nm=$(basename "~{spvcf_gz}" .spvcf.gz)
+        nm="${nm}.vcf.gz"
         mkdir out
-        pigz -dc "${spvcf_gz}" | ./spvcf decode | ./bgzip -@ $(nproc) > "out/$nm"
-    }
+        bgzip -dc "~{spvcf_gz}" | ./spvcf decode | bgzip -@ 4 > "out/${nm}"
+    >>>
 
     runtime {
-        docker: "ubuntu:18.04"
+        docker: "ubuntu:20.04"
+        cpu: 4
+        memory: "4 GB"
+        disks: "local-disk ~{10*ceil(size(spvcf_gz,'GB'))} SSD"
     }
 
     output {
@@ -67,35 +78,40 @@ task spvcf_decode {
 }
 
 task spvcf_squeeze {
-    File vcf_gz
-    Boolean multithread = false
-    String release = "v1.0.0"
+    input {
+        File vcf_gz
+        Boolean multithread = false
+        String release = "v1.1.0"
+        Int cpu = if multithread then 8 else 4
+    }
 
     parameter_meta {
         vcf_gz: "stream"
     }
 
-    command {
-        set -ex -o pipefail
+    command <<<
+        set -euxo pipefail
 
-        apt-get update -qq && apt-get install -y -qq pigz wget
-        wget -nv https://github.com/mlin/spVCF/releases/download/${release}/spvcf
-        wget -nv https://github.com/dnanexus-rnd/GLnexus/raw/master/cli/dxapplet/resources/usr/local/bin/bgzip
-        chmod +x spvcf bgzip
+        apt-get -qq update && apt-get install -y wget tabix
+        wget -nv https://github.com/mlin/spVCF/releases/download/~{release}/spvcf
+        chmod +x spvcf
 
         threads_arg=""
-        if [ "${multithread}" == "true" ]; then
-            threads_arg="--threads $(nproc)"
+        if [ "~{multithread}" == "true" ]; then
+            threads_arg="--threads 4"
         fi
 
-        nm=$(basename "${vcf_gz}" .vcf.gz)
-        nm="$nm.squeeze.vcf.gz"
+        nm=$(basename "~{vcf_gz}" .vcf.gz)
+        nm="${nm}.squeeze.vcf.gz"
         mkdir out
-        pigz -dc "${vcf_gz}" | ./spvcf squeeze $threads_arg | ./bgzip -@ $(nproc) > "out/$nm"
-    }
+        bgzip -dc "~{vcf_gz}" | ./spvcf squeeze $threads_arg | bgzip -@ 4 > "out/${nm}"
+    >>>
 
     runtime {
-        docker: "ubuntu:18.04"
+        docker: "ubuntu:20.04"
+        cpu: cpu
+        memory: "~{cpu} GB"
+        disks: "local-disk ~{ceil(size(vcf_gz,'GB'))} SSD"
     }
 
     output {

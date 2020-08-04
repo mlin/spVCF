@@ -1,7 +1,11 @@
+version 1.0
+
 import "spvcf.wdl" as tasks
 
 workflow test_spvcf {
-    File vcf_gz # pVCF
+    input {
+        File vcf_gz # pVCF
+    }
 
     # spVCF-encode the pVCF
     call tasks.spvcf_encode {
@@ -37,11 +41,21 @@ workflow test_spvcf {
 }
 
 task verify_identical_gz_content {
-    File gz1
-    File gz2
+    input {
+        File gz1
+        File gz2
+    }
 
-    command {
-        set -e -o pipefail
-        cmp --silent <(gzip -dc "${gz1}") <(gzip -dc "${gz2}")
+    command <<<
+        set -euxo pipefail
+        apt-get -qq update && apt-get install -y tabix
+        cmp --silent <(bgzip -dc "~{gz1}") <(bgzip -dc "~{gz2}")
+    >>>
+
+    runtime {
+        docker: "ubuntu:20.04"
+        cpu: 4
+        memory: "4 GB"
+        disks: "local-disk ~{ceil(size(gz2,'GB')+size(gz1,'GiB'))+4} SSD"
     }
 }
