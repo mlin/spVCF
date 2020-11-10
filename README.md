@@ -20,7 +20,7 @@ Further resources:
 
 This repository has a command-line utility for encoding pVCF to spVCF and vice versa. The [Releases](https://github.com/mlin/spVCF/releases) page has pre-built executables compatible with most Linux x86-64 hosts, which you can download and `chmod +x spvcf`.
 
-To instead build and test it yourself, clone this repository and:
+To build and test it locally, begin with a C++14 Linux development environment with CMake and [libdeflate](https://github.com/ebiggers/libdeflate). Clone this repository and:
 
 ```
 cmake . && make
