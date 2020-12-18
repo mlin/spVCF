@@ -8,7 +8,7 @@ spVCF is an evolution of VCF that keeps most aspects of its tab-delimited text f
 
 Further resources:
 
-* [bioRxiv preprint](https://www.biorxiv.org/content/10.1101/611954v2) for a short manuscript on the approach & tool
+* Our [*Bioinformatics* Applications Note](https://doi.org/10.1093/bioinformatics/btaa1004) describing the approach, tool, and example results
 * [doc/SPEC.md](https://github.com/mlin/spVCF/blob/master/doc/SPEC.md) has format details and a worked example
 * [doc/compression_results.md](https://github.com/mlin/spVCF/blob/master/doc/compression_results.md) tests spVCF with *N*=50K exomes, observing up to 15X size reduction for bgzip-compressed pVCF, and scaling much more gently with *N*.
 * [slide deck](https://docs.google.com/presentation/d/13lzEkdWAVwcsKofhsiYEdl92xMQgx5_dSOSIyZDggfM/edit?usp=sharing) presented at the GA4GH & MPEG-G Genome Compression Workshop, October 2018.
