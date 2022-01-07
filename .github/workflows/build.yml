@@ -20,12 +20,13 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: build
-      run: docker build -t spvcf .
-    - name: test
-      run: docker run --rm spvcf
+      run: |
+        docker pull ubuntu:18.04
+        docker pull ubuntu:20.04
+        docker build --no-cache -t spvcf .
     - name: inspect
       run: |
-        docker run -v $(pwd):/mnt spvcf cp spvcf /mnt
+        docker run -v $(pwd):/mnt spvcf cp /usr/local/bin/spvcf /mnt
         ldd spvcf
         sha256sum spvcf
     - name: upload exe
