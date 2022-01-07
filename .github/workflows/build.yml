@@ -20,12 +20,12 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: build
-      run: docker build -t spVCF .
+      run: docker build -t spvcf .
     - name: test
-      run: docker run --rm -it spVCF
+      run: docker run --rm -it spvcf
     - name: inspect
       run: |
-        docker run -v $(pwd):/mnt spVCF cp spvcf /mnt
+        docker run -v $(pwd):/mnt spvcf cp spvcf /mnt
         ldd spvcf
         sha256sum spvcf
     - name: upload exe
@@ -41,7 +41,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
     - name: push image
       run: |
-        REPO="ghcr.io/mlin/spVCF"
+        REPO="ghcr.io/mlin/spvcf"
         TAG="$(git describe --tags --always --dirty)"
-        docker tag spVCF:latest "${REPO}:${TAG}"
+        docker tag spvcf:latest "${REPO}:${TAG}"
         docker push "${REPO}:${TAG}"
