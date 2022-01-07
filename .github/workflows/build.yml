@@ -34,6 +34,10 @@ jobs:
       with:
         name: spvcf
         path: spvcf
+    - name: WDL test
+      run: |
+        pip3 install --upgrade miniwdl
+        miniwdl run test/test_spvcf.wdl vcf_gz=test/data/small.vcf.gz docker=spvcf:latest --verbose
     - name: docker login ghcr.io
       uses: docker/login-action@v1
       with:

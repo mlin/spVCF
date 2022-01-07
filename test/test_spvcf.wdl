@@ -5,24 +5,28 @@ import "spvcf.wdl" as tasks
 workflow test_spvcf {
     input {
         File vcf_gz # pVCF
+        String? docker
     }
 
     # spVCF-encode the pVCF
     call tasks.spvcf_encode {
         input:
-            vcf_gz = vcf_gz
+            vcf_gz = vcf_gz,
+            docker = docker
     }
 
     # also squeeze the pVCF (without run-encoding)
     call tasks.spvcf_squeeze {
         input:
-            vcf_gz = vcf_gz
+            vcf_gz = vcf_gz,
+            docker = docker
     }
 
     # decode the spVCF back to squeezed pVCF
     call tasks.spvcf_decode {
         input:
-            spvcf_gz = spvcf_encode.spvcf_gz
+            spvcf_gz = spvcf_encode.spvcf_gz,
+            docker = docker
     }
 
     # verify decoded pVCF is identical to the squeezed pVCF
