@@ -1,0 +1,19 @@
+repos:
+- repo: local
+  hooks:
+  - id: clang-format
+    name: clang-format
+    language: system
+    files: \.(c|cc|cxx|cpp|h|hpp|hxx)$
+    exclude: (json1|uint)\.c
+    verbose: true
+    entry: clang-format
+    args: [-i,'-style={IndentWidth: 4, ColumnLimit: 100, BreakStringLiterals: false, ReflowComments: false}']
+  - id: cppcheck
+    name: cppcheck
+    language: system
+    files: \.(c|cc|cxx|cpp|h|hpp|hxx)$
+    exclude: json1\.c
+    verbose: true
+    entry: cppcheck
+    args: [-q,--language=c++,--std=c++14]
