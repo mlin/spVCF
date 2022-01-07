@@ -1,4 +1,4 @@
-FROM ubuntu:18.04
+FROM ubuntu:18.04 AS builder
 ENV DEBIAN_FRONTEND noninteractive
 
 RUN apt-get -qq update && \
@@ -14,4 +14,12 @@ RUN make -j $(nproc) && make install
 ADD . /src
 WORKDIR /src
 RUN rm -f CMakeCache.txt && cmake -DCMAKE_BUILD_TYPE=Release /src && make clean && make -j$(nproc)
-CMD ctest -V
+RUN ctest -V
+
+
+FROM ubuntu:20.04
+RUN apt-get -qq update && \
+     apt-get -qq install -y --no-install-recommends --no-install-suggests \
+     tabix bcftools less
+COPY --from=builder /src/spvcf /usr/local/bin/spvcf
+CMD ["spvcf"]

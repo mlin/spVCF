@@ -1,25 +1,25 @@
 #include "spVCF.h"
-#include <vector>
-#include <sstream>
+#include "htslib/kseq.h"
+#include "htslib/kstring.h"
+#include "htslib/tbx.h"
+#include "strlcpy.h"
 #include <algorithm>
-#include <cstdint>
-#include <stdexcept>
+#include <assert.h>
+#include <climits>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <climits>
-#include <assert.h>
-#include "strlcpy.h"
-#include "htslib/kstring.h"
-#include "htslib/kseq.h"
-#include "htslib/tbx.h"
+#include <sstream>
+#include <stdexcept>
+#include <vector>
 
 using namespace std;
 
 namespace spVCF {
 
 // split s on delim & return strlen(s). s is damaged by side-effect
-template<typename Out>
+template <typename Out>
 size_t split(char *s, char delim, Out result, uint64_t maxsplit = ULLONG_MAX) {
     string delims("\n");
     delims[0] = delim;
@@ -41,23 +41,20 @@ size_t split(char *s, char delim, Out result, uint64_t maxsplit = ULLONG_MAX) {
     return last_token ? (last_token + strlen(last_token) - s) : 0;
 }
 
-template<typename Out>
-size_t split(string& s, char delim, Out result, uint64_t maxsplit = ULLONG_MAX) {
+template <typename Out>
+size_t split(string &s, char delim, Out result, uint64_t maxsplit = ULLONG_MAX) {
     return split(&s[0], delim, result, maxsplit);
 }
 
 // because std::ostringstream is too slow :(
 class OStringStream {
-public:
-    OStringStream(size_t initial_capacity)
-        : buf_size_(initial_capacity)
-        , cursor_(0)
-        {
-            buf_ = make_unique<char[]>(buf_size_+1);
-            buf_[0] = 0;
-        }
+  public:
+    OStringStream(size_t initial_capacity) : buf_size_(initial_capacity), cursor_(0) {
+        buf_ = make_unique<char[]>(buf_size_ + 1);
+        buf_[0] = 0;
+    }
     OStringStream() : OStringStream(64) {}
-    OStringStream(const OStringStream&) = delete;
+    OStringStream(const OStringStream &) = delete;
 
     inline void Add(char c) {
         if (remaining() == 0) {
@@ -68,14 +65,14 @@ public:
         buf_[cursor_++] = c;
         buf_[cursor_] = 0;
     }
-    inline OStringStream& operator<<(char c) {
+    inline OStringStream &operator<<(char c) {
         Add(c);
         return *this;
     }
 
-    void Add(const char* s) {
+    void Add(const char *s) {
         size_t rem = remaining();
-        size_t len = strlcpy(&buf_[cursor_], s, rem+1);
+        size_t len = strlcpy(&buf_[cursor_], s, rem + 1);
         if (len <= rem) {
             cursor_ += len;
             assert(buf_[cursor_] == 0);
@@ -86,15 +83,13 @@ public:
             return Add(s + rem);
         }
     }
-    inline OStringStream& operator<<(const char* s) {
+    inline OStringStream &operator<<(const char *s) {
         Add(s);
         return *this;
     }
-    inline OStringStream& operator<<(const std::string& s) {
-        return *this << s.c_str();
-    }
+    inline OStringStream &operator<<(const std::string &s) { return *this << s.c_str(); }
 
-    inline const char* Get() const {
+    inline const char *Get() const {
         assert(buf_[cursor_] == 0);
         return &buf_[0];
     }
@@ -104,11 +99,9 @@ public:
         return cursor_;
     }
 
-    void Clear() {
-        buf_[0] = cursor_ = 0;
-    }
+    void Clear() { buf_[0] = cursor_ = 0; }
 
-private:
+  private:
     inline size_t remaining() const {
         assert(buf_[cursor_] == 0);
         assert(cursor_ <= buf_size_);
@@ -116,11 +109,11 @@ private:
     }
 
     void grow(size_t hint = 0) {
-        buf_size_ = max(2*buf_size_, hint+buf_size_);
-        auto buf = make_unique<char[]>(buf_size_+1);
+        buf_size_ = max(2 * buf_size_, hint + buf_size_);
+        auto buf = make_unique<char[]>(buf_size_ + 1);
         memcpy(&buf[0], &buf_[0], cursor_);
         buf[cursor_] = 0;
-        swap(buf_,buf);
+        swap(buf_, buf);
     }
 
     // actual size of buf_ should always be buf_size_+1 to accommodate NUL
@@ -131,14 +124,14 @@ private:
 
 // Base class for encoder/decoder with common state & error-handling
 class TranscoderBase : public Transcoder {
-public:
+  public:
     TranscoderBase() = default;
-    TranscoderBase(const TranscoderBase&) = delete;
+    TranscoderBase(const TranscoderBase &) = delete;
 
     transcode_stats Stats() override { return stats_; }
 
-protected:
-    void fail(const string& msg) {
+  protected:
+    void fail(const string &msg) {
         ostringstream ss;
         ss << "spvcf: " << msg << " (line " << line_number_ << ")";
         throw runtime_error(ss.str());
@@ -150,16 +143,16 @@ protected:
 };
 
 class EncoderImpl : public TranscoderBase {
-public:
+  public:
     EncoderImpl(uint64_t checkpoint_period, bool sparse, bool squeeze, double roundDP_base)
-        : checkpoint_period_(checkpoint_period), sparse_(sparse), squeeze_(squeeze), roundDP_base_(roundDP_base)
-        {}
-    EncoderImpl(const EncoderImpl&) = delete;
-    const char* ProcessLine(char* input_line) override;
+        : checkpoint_period_(checkpoint_period), sparse_(sparse), squeeze_(squeeze),
+          roundDP_base_(roundDP_base) {}
+    EncoderImpl(const EncoderImpl &) = delete;
+    const char *ProcessLine(char *input_line) override;
 
-private:
-    bool unquotableGT(const char* entry);
-    void Squeeze(const vector<char*>& line);
+  private:
+    bool unquotableGT(const char *entry);
+    void Squeeze(const vector<char *> &line);
 
     uint64_t checkpoint_period_ = 0;
     bool sparse_ = true;
@@ -175,12 +168,12 @@ private:
 };
 
 #include <iostream>
-const char* EncoderImpl::ProcessLine(char* input_line) {
+const char *EncoderImpl::ProcessLine(char *input_line) {
     ++line_number_;
     // Pass through header lines
     if (*input_line == 0 || *input_line == '#') {
         if (sparse_ && strncmp(input_line, "##fileformat=", 13) == 0) {
-            char* format = input_line + 13;
+            char *format = input_line + 13;
             buffer_.Clear();
             buffer_ << "##fileformat=spVCF" << GIT_REVISION << ";" << format;
             return buffer_.Get();
@@ -190,7 +183,7 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
     ++stats_.lines;
 
     // Split the tab-separated line
-    vector<char*> tokens;
+    vector<char *> tokens;
     tokens.reserve(dense_entries_.size() + 9);
     size_t linesz = split(input_line, '\t', back_inserter(tokens));
     if (tokens.size() < 10) {
@@ -201,7 +194,7 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
     }
 
     uint64_t N = tokens.size() - 9;
-    if (dense_entries_.empty()){ // First line: allocate the dense entries
+    if (dense_entries_.empty()) { // First line: allocate the dense entries
         dense_entries_.resize(N);
         stats_.N = N;
     } else if (dense_entries_.size() != N) { // Subsequent line -- check expected # columns
@@ -255,8 +248,8 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
     // Iterate over the columns, compare each entry with the last entry
     // recorded densely.
     for (uint64_t s = 0; s < N; s++) {
-        string& m = dense_entries_[s];
-        const char* t = tokens[s+9];
+        string &m = dense_entries_[s];
+        const char *t = tokens[s + 9];
         if (*t == '"') {
             fail("Input seems to be sparse-encoded already");
         }
@@ -301,9 +294,9 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
             }
             buffer_ << tokens[t];
             if (t >= 9) {
-                dense_entries_[t-9] = tokens[t];
+                dense_entries_[t - 9] = tokens[t];
             }
-            assert(tokens.size() == stats_.N+9);
+            assert(tokens.size() == stats_.N + 9);
         }
         since_checkpoint_ = 0;
         errno = 0;
@@ -321,7 +314,7 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
     }
 
     stats_.sparse_cells += sparse_cells;
-    auto sparse_pct = 100*sparse_cells/N;
+    auto sparse_pct = 100 * sparse_cells / N;
     if (sparse_pct <= 25) {
         ++stats_.sparse75_lines;
     }
@@ -339,24 +332,24 @@ const char* EncoderImpl::ProcessLine(char* input_line) {
 // allele(s) don't consist of all 0 or all .
 // A half-call like ./0 is considered unquotable.
 // ASSUMES GT is the first FORMAT field (as required by VCF)
-bool EncoderImpl::unquotableGT(const char* entry) {
+bool EncoderImpl::unquotableGT(const char *entry) {
     bool zero = false, dot = false;
     if (*entry == 0 || *entry == ':') {
         fail("missing GT entry");
     }
     for (; *entry && *entry != ':'; entry++) {
         switch (*entry) {
-            case '0':
-                zero = true;
-                break;
-            case '.':
-                dot = true;
-                break;
-            case '/':
-            case '|':
-                break;
-            default:
-                return true;
+        case '0':
+            zero = true;
+            break;
+        case '.':
+            dot = true;
+            break;
+        case '/':
+        case '|':
+            break;
+        default:
+            return true;
         }
     }
     return (zero == dot);
@@ -369,12 +362,12 @@ bool EncoderImpl::unquotableGT(const char* entry) {
 // GT:DP, followed by any remaining fields.
 //
 // Each element of line is modified in-place.
-void EncoderImpl::Squeeze(const vector<char*>& line) {
+void EncoderImpl::Squeeze(const vector<char *> &line) {
     if (roundDP_table_.empty()) {
         // precompute a lookup table for rounding down DP values
         roundDP_table_.push_back("0");
         for (uint64_t DP = 1; DP < 10000; DP++) {
-            uint64_t rDP = uint64_t(pow(roundDP_base_, floor(log(DP)/log(roundDP_base_))));
+            uint64_t rDP = uint64_t(pow(roundDP_base_, floor(log(DP) / log(roundDP_base_))));
             assert(rDP <= DP);
             roundDP_table_.push_back(to_string(rDP));
         }
@@ -390,19 +383,19 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
     auto pDP = find(format.begin(), format.end(), "DP");
     if (pDP != format.end()) {
         iDP = pDP - format.begin();
-        assert (iDP > 0 && iDP < format.size());
+        assert(iDP > 0 && iDP < format.size());
     }
     int iAD = -1;
     auto pAD = find(format.begin(), format.end(), "AD");
     if (pAD != format.end()) {
         iAD = pAD - format.begin();
-        assert (iAD > 0 && iAD < format.size());
+        assert(iAD > 0 && iAD < format.size());
     }
     int iVR = -1;
     auto pVR = find(format.begin(), format.end(), "VR");
     if (pVR != format.end()) {
         iVR = pVR - format.begin();
-        assert (iVR > 0 && iVR < format.size());
+        assert(iVR > 0 && iVR < format.size());
     }
 
     // compute the new field order and update FORMAT
@@ -428,7 +421,7 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
 
     // reusable buffers to save allocations in upcoming inner loop
     OStringStream new_cell;
-    vector<char*> entries;
+    vector<char *> entries;
 
     // proceed through all cells
     for (int s = 9; s < line.size(); s++) {
@@ -445,7 +438,8 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
             // does AD have any non-zero values after the first value?
             char *c = strchr(entries[iAD], ',');
             if (c) {
-                for (; (*c == '0' || *c == ','); c++);
+                for (; (*c == '0' || *c == ','); c++)
+                    ;
                 if (*c == 0) {
                     truncate = true;
                 }
@@ -475,7 +469,8 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
                     if (DP < roundDP_table_.size()) {
                         new_cell << roundDP_table_[DP];
                     } else {
-                        uint64_t rDP = uint64_t(pow(roundDP_base_, floor(log(DP)/log(roundDP_base_))));
+                        uint64_t rDP =
+                            uint64_t(pow(roundDP_base_, floor(log(DP) / log(roundDP_base_))));
                         assert(rDP <= DP);
                         new_cell << to_string(rDP);
                     }
@@ -492,7 +487,7 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
             // Even if we're not lossily truncating QC fields in this pVCF cell,
             // it may have a trailing run of missing values which we can omit
             // safely.
-            const size_t first_other_field = (iDP > 0) ? 2 : 1;  // other than GT & DP
+            const size_t first_other_field = (iDP > 0) ? 2 : 1; // other than GT & DP
             // Determine the index of the last non-missing output field.
             size_t last = permutation.size();
             while (--last >= first_other_field) {
@@ -525,30 +520,31 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
     }
 }
 
-unique_ptr<Transcoder> NewEncoder(uint64_t checkpoint_period, bool sparse, bool squeeze, double roundDP_base) {
+unique_ptr<Transcoder> NewEncoder(uint64_t checkpoint_period, bool sparse, bool squeeze,
+                                  double roundDP_base) {
     return make_unique<EncoderImpl>(checkpoint_period, sparse, squeeze, roundDP_base);
 }
 
 class DecoderImpl : public TranscoderBase {
-public:
+  public:
     DecoderImpl() = default;
-    DecoderImpl(const DecoderImpl&) = delete;
-    const char* ProcessLine(char* input_line) override;
+    DecoderImpl(const DecoderImpl &) = delete;
+    const char *ProcessLine(char *input_line) override;
 
-private:
+  private:
     vector<string> dense_entries_;
     OStringStream buffer_;
 };
 
-const char* DecoderImpl::ProcessLine(char *input_line) {
+const char *DecoderImpl::ProcessLine(char *input_line) {
     ++line_number_;
     // Pass through header lines
     if (*input_line == 0 || *input_line == '#') {
         if (strncmp(input_line, "##fileformat=spVCF", 18) == 0) {
-            char* format = strchr(input_line, ';');
+            char *format = strchr(input_line, ';');
             if (format) {
                 buffer_.Clear();
-                buffer_ << "##fileformat=" << (format+1);
+                buffer_ << "##fileformat=" << (format + 1);
                 return buffer_.Get();
             }
         }
@@ -557,7 +553,7 @@ const char* DecoderImpl::ProcessLine(char *input_line) {
     ++stats_.lines;
 
     // Split the tab-separated line
-    vector<char*> tokens;
+    vector<char *> tokens;
     tokens.reserve(dense_entries_.size());
     split(input_line, '\t', back_inserter(tokens));
     if (tokens.size() < 10) {
@@ -585,7 +581,7 @@ const char* DecoderImpl::ProcessLine(char *input_line) {
             if (INFO.substr(0, 20) == "spVCF_checkpointPOS=") {
                 auto p = INFO.find(';');
                 if (p != string::npos) {
-                    buffer_ << INFO.substr(p+1);
+                    buffer_ << INFO.substr(p + 1);
                 } else {
                     buffer_ << '.';
                 }
@@ -596,9 +592,9 @@ const char* DecoderImpl::ProcessLine(char *input_line) {
     }
 
     // Iterate over the sparse columns
-    uint64_t sparse_cells = (tokens.size()-9), dense_cursor = 0;
+    uint64_t sparse_cells = (tokens.size() - 9), dense_cursor = 0;
     for (uint64_t sparse_cursor = 0; sparse_cursor < sparse_cells; sparse_cursor++) {
-        const char* t = tokens[sparse_cursor+9];
+        const char *t = tokens[sparse_cursor + 9];
         if (*t == 0) {
             fail("empty cell");
         } else if (*t != '"') {
@@ -615,7 +611,7 @@ const char* DecoderImpl::ProcessLine(char *input_line) {
             uint64_t r = 1;
             if (t[1]) { // strlen(t) > 1
                 errno = 0;
-                auto s = strtoull(t+1, nullptr, 10);
+                auto s = strtoull(t + 1, nullptr, 10);
                 if (errno) {
                     fail("Undecodable sparse cell");
                 }
@@ -645,7 +641,7 @@ const char* DecoderImpl::ProcessLine(char *input_line) {
     }
 
     stats_.sparse_cells += sparse_cells;
-    auto sparse_pct = 100*sparse_cells/N;
+    auto sparse_pct = 100 * sparse_cells / N;
     if (sparse_pct <= 25) {
         ++stats_.sparse75_lines;
     }
@@ -659,16 +655,14 @@ const char* DecoderImpl::ProcessLine(char *input_line) {
     return buffer_.Get();
 }
 
-unique_ptr<Transcoder> NewDecoder() {
-    return make_unique<DecoderImpl>();
-}
+unique_ptr<Transcoder> NewDecoder() { return make_unique<DecoderImpl>(); }
 
 class TabixIterator {
     htsFile *fp_;
     tbx_t *tbx_;
 
     hts_itr_t *it_;
-    kstring_t str_ = {0,0,0};
+    kstring_t str_ = {0, 0, 0};
     bool valid_ = false;
 
     TabixIterator(htsFile *fp, tbx_t *tbx, hts_itr_t *it) {
@@ -678,7 +672,7 @@ class TabixIterator {
         assert(tbx_ && fp_ && it_);
     }
 
-public:
+  public:
     ~TabixIterator() {
         tbx_itr_destroy(it_);
         if (str_.s) {
@@ -686,7 +680,7 @@ public:
         }
     }
 
-    static unique_ptr<TabixIterator> Open(htsFile *fp, tbx_t *tbx, const char* region) {
+    static unique_ptr<TabixIterator> Open(htsFile *fp, tbx_t *tbx, const char *region) {
         if (!tbx) {
             return nullptr;
         }
@@ -699,13 +693,11 @@ public:
         return ans;
     }
 
-    bool Valid() const {
-        return valid_ && str_.s;
-    }
+    bool Valid() const { return valid_ && str_.s; }
 
-    const char* Line() const {
+    const char *Line() const {
         if (Valid()) {
-            assert(ks_len((kstring_t*)&str_) == strlen(str_.s));
+            assert(ks_len((kstring_t *)&str_) == strlen(str_.s));
             return str_.s;
         }
         return nullptr;
@@ -717,31 +709,35 @@ public:
     }
 };
 
-void TabixSlice(const std::string& spvcf_gz, std::vector<std::string> regions, std::ostream& out) {
+void TabixSlice(const std::string &spvcf_gz, std::vector<std::string> regions, std::ostream &out) {
     // Open the file
-    auto fp = shared_ptr<htsFile>(hts_open(spvcf_gz.c_str(), "r"),
-                                  [] (htsFile* f) { if (f && hts_close(f)) throw runtime_error("hts_close"); });
+    auto fp = shared_ptr<htsFile>(hts_open(spvcf_gz.c_str(), "r"), [](htsFile *f) {
+        if (f && hts_close(f))
+            throw runtime_error("hts_close");
+    });
     if (!fp) {
         throw runtime_error("Failed to open " + spvcf_gz);
     }
 
     // Open the index file
-    auto tbx = shared_ptr<tbx_t>(tbx_index_load(spvcf_gz.c_str()),
-                                 [] (tbx_t *t) { if (t) tbx_destroy(t); });
+    auto tbx = shared_ptr<tbx_t>(tbx_index_load(spvcf_gz.c_str()), [](tbx_t *t) {
+        if (t)
+            tbx_destroy(t);
+    });
     if (!tbx) {
         throw runtime_error("Falied to open .tbi/.csi index of " + spvcf_gz);
     }
 
     // Copy the header lines
-    kstring_t str = {0,0,0};
+    kstring_t str = {0, 0, 0};
     while (hts_getline(fp.get(), KS_SEP_LINE, &str) >= 0) {
-        if (!str.l || str.s[0]!= tbx->conf.meta_char) {
+        if (!str.l || str.s[0] != tbx->conf.meta_char) {
             break;
         }
         out << str.s << '\n';
     }
 
-    for (const auto& region : regions) {
+    for (const auto &region : regions) {
         // Parse the region as either 'chrom' or 'chrom:lo-hi'
         string region_chrom, region_hi;
         uint64_t region_lo = ULLONG_MAX;
@@ -751,15 +747,15 @@ void TabixSlice(const std::string& spvcf_gz, std::vector<std::string> regions, s
         } else {
             region_chrom = region.substr(0, c);
             auto d = region.find('-', c);
-            if (c == 0 || d == string::npos || d <= c+1 || d >= region.size()-1) {
+            if (c == 0 || d == string::npos || d <= c + 1 || d >= region.size() - 1) {
                 throw runtime_error("invalid region " + region);
             }
             errno = 0;
-            region_lo = strtoull(region.substr(c+1, d-c-1).c_str(), nullptr, 10);
+            region_lo = strtoull(region.substr(c + 1, d - c - 1).c_str(), nullptr, 10);
             if (errno) {
                 throw runtime_error("invalid region lo " + region);
             }
-            region_hi = region.substr(d+1);
+            region_hi = region.substr(d + 1);
             assert(region_hi.size());
         }
         assert(region_chrom.size());
@@ -771,7 +767,7 @@ void TabixSlice(const std::string& spvcf_gz, std::vector<std::string> regions, s
         }
 
         // extract INFO spVCF_checkpointPOS=ck.
-        vector<char*> tokens;
+        vector<char *> tokens;
         string linecpy(itr->Line());
         split(linecpy, '\t', back_inserter(tokens), 9);
         if (tokens.size() < 10) {
@@ -802,7 +798,8 @@ void TabixSlice(const std::string& spvcf_gz, std::vector<std::string> regions, s
         string ck_region = region_chrom + ":" + to_string(ck) + "-" + region_hi;
         itr = TabixIterator::Open(fp.get(), tbx.get(), ck_region.c_str());
         if (!itr || !itr->Valid()) {
-            throw runtime_error("couldn't open checkpoint region " + ck_region + " before " + region);
+            throw runtime_error("couldn't open checkpoint region " + ck_region + " before " +
+                                region);
         }
 
         // Find the first checkpoint in this expanded region (it's not
@@ -818,7 +815,8 @@ void TabixSlice(const std::string& spvcf_gz, std::vector<std::string> regions, s
             errno = 0;
             linepos = strtoull(tokens[1], nullptr, 10);
             if (errno) {
-                throw runtime_error("invalid POS " + string(tokens[1]) + " while looking for checkpoint in " + ck_region);
+                throw runtime_error("invalid POS " + string(tokens[1]) +
+                                    " while looking for checkpoint in " + ck_region);
             }
             if (string(tokens[7]).substr(0, 20) != "spVCF_checkpointPOS=") {
                 break;
@@ -826,7 +824,8 @@ void TabixSlice(const std::string& spvcf_gz, std::vector<std::string> regions, s
             itr->Next();
             // We're expecting to find the checkpoint before region_lo
             if (!itr->Valid() || linepos >= region_lo) {
-                throw runtime_error("couldn't find checkpoint in " + ck_region + " before " + region);
+                throw runtime_error("couldn't find checkpoint in " + ck_region + " before " +
+                                    region);
             }
         }
 
@@ -847,7 +846,8 @@ void TabixSlice(const std::string& spvcf_gz, std::vector<std::string> regions, s
             errno = 0;
             linepos = strtoull(tokens[1], nullptr, 10);
             if (errno) {
-                throw runtime_error("invalid POS " + string(tokens[1]) + " while looking for checkpoint in " + ck_region);
+                throw runtime_error("invalid POS " + string(tokens[1]) +
+                                    " while looking for checkpoint in " + ck_region);
             }
 
             itr->Next();
@@ -859,7 +859,8 @@ void TabixSlice(const std::string& spvcf_gz, std::vector<std::string> regions, s
             }
 
             if (!itr->Valid()) {
-                throw runtime_error("Couldn't resume from checkpoint " + ck_region + " for " + region);
+                throw runtime_error("Couldn't resume from checkpoint " + ck_region + " for " +
+                                    region);
             }
         }
 
@@ -880,7 +881,7 @@ void TabixSlice(const std::string& spvcf_gz, std::vector<std::string> regions, s
             string newINFO = "spVCF_checkpointPOS=" + to_string(linepos);
             auto sc = INFO.find(';');
             if (sc != string::npos) {
-                newINFO = newINFO + ";" + INFO.substr(sc+1);
+                newINFO = newINFO + ";" + INFO.substr(sc + 1);
             }
 
             for (int i = 0; i < tokens.size(); i++) {
@@ -903,4 +904,4 @@ void TabixSlice(const std::string& spvcf_gz, std::vector<std::string> regions, s
     }
 }
 
-}
+} // namespace spVCF

@@ -4,7 +4,7 @@ task spvcf_encode {
     input {
         File vcf_gz
         Boolean multithread = false
-        String release = "v1.1.0"
+        String docker = "ghcr.io/mlin/spvcf:v1.2.0"
         Int cpu = if multithread then 8 else 4
     }
 
@@ -15,10 +15,6 @@ task spvcf_encode {
     command <<<
         set -euxo pipefail
 
-        apt-get -qq update && apt-get install -y wget tabix
-        wget -nv https://github.com/mlin/spVCF/releases/download/~{release}/spvcf
-        chmod +x spvcf
-
         threads_arg=""
         if [ "~{multithread}" == "true" ]; then
             threads_arg="--threads 4"
@@ -27,11 +23,11 @@ task spvcf_encode {
         nm=$(basename "~{vcf_gz}" .vcf.gz)
         nm="${nm}.spvcf.gz"
         mkdir out
-        bgzip -dc "~{vcf_gz}" | ./spvcf encode $threads_arg | bgzip -@ 4 > "out/${nm}"
+        bgzip -dc "~{vcf_gz}" | spvcf encode $threads_arg | bgzip -@ 4 > "out/${nm}"
     >>>
 
     runtime {
-        docker: "ubuntu:20.04"
+        docker: docker
         cpu: cpu
         memory: "~{cpu} GB"
         disks: "local-disk ~{ceil(size(vcf_gz,'GB'))} SSD"
@@ -45,7 +41,7 @@ task spvcf_encode {
 task spvcf_decode {
     input {
         File spvcf_gz
-        String release = "v1.1.0"
+        String docker = "ghcr.io/mlin/spvcf:v1.2.0"
     }
 
     parameter_meta {
@@ -55,18 +51,14 @@ task spvcf_decode {
     command <<<
         set -euxo pipefail
 
-        apt-get -qq update && apt-get install -y wget tabix
-        wget -nv https://github.com/mlin/spVCF/releases/download/~{release}/spvcf
-        chmod +x spvcf
-
         nm=$(basename "~{spvcf_gz}" .spvcf.gz)
         nm="${nm}.vcf.gz"
         mkdir out
-        bgzip -dc "~{spvcf_gz}" | ./spvcf decode | bgzip -@ 4 > "out/${nm}"
+        bgzip -dc "~{spvcf_gz}" | spvcf decode | bgzip -@ 4 > "out/${nm}"
     >>>
 
     runtime {
-        docker: "ubuntu:20.04"
+        docker: docker
         cpu: 4
         memory: "4 GB"
         disks: "local-disk ~{10*ceil(size(spvcf_gz,'GB'))} SSD"
@@ -81,7 +73,7 @@ task spvcf_squeeze {
     input {
         File vcf_gz
         Boolean multithread = false
-        String release = "v1.1.0"
+        String docker = "ghcr.io/mlin/spvcf:v1.2.0"
         Int cpu = if multithread then 8 else 4
     }
 
@@ -92,10 +84,6 @@ task spvcf_squeeze {
     command <<<
         set -euxo pipefail
 
-        apt-get -qq update && apt-get install -y wget tabix
-        wget -nv https://github.com/mlin/spVCF/releases/download/~{release}/spvcf
-        chmod +x spvcf
-
         threads_arg=""
         if [ "~{multithread}" == "true" ]; then
             threads_arg="--threads 4"
@@ -104,11 +92,11 @@ task spvcf_squeeze {
         nm=$(basename "~{vcf_gz}" .vcf.gz)
         nm="${nm}.squeeze.vcf.gz"
         mkdir out
-        bgzip -dc "~{vcf_gz}" | ./spvcf squeeze $threads_arg | bgzip -@ 4 > "out/${nm}"
+        bgzip -dc "~{vcf_gz}" | spvcf squeeze $threads_arg | bgzip -@ 4 > "out/${nm}"
     >>>
 
     runtime {
-        docker: "ubuntu:20.04"
+        docker: docker
         cpu: cpu
         memory: "~{cpu} GB"
         disks: "local-disk ~{ceil(size(vcf_gz,'GB'))} SSD"
