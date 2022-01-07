@@ -22,7 +22,7 @@ jobs:
     - name: build
       run: docker build -t spvcf .
     - name: test
-      run: docker run --rm -it spvcf
+      run: docker run --rm spvcf
     - name: inspect
       run: |
         docker run -v $(pwd):/mnt spvcf cp spvcf /mnt
