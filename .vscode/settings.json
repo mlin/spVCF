@@ -15,5 +15,6 @@
         "iosfwd": "cpp",
         "mutex": "cpp",
         "chrono": "cpp"
-    }
+    },
+    "cmake.configureOnOpen": false
 }

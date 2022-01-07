@@ -492,9 +492,10 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
             // Even if we're not lossily truncating QC fields in this pVCF cell,
             // it may have a trailing run of missing values which we can omit
             // safely.
+            const size_t first_other_field = (iDP > 0) ? 2 : 1;  // other than GT & DP
             // Determine the index of the last non-missing output field.
             size_t last = permutation.size();
-            while (--last >= 2) {
+            while (--last >= first_other_field) {
                 if (entries.size() > permutation[last]) {
                     char *entry = entries[permutation[last]];
                     for (; *entry; ++entry) {
@@ -508,7 +509,7 @@ void EncoderImpl::Squeeze(const vector<char*>& line) {
                 }
             }
             // Output fields up to and including that one.
-            for (size_t i = 2; i <= last; i++) {
+            for (size_t i = first_other_field; i <= last; i++) {
                 new_cell << ':';
                 if (entries.size() > permutation[i]) {
                     new_cell << entries[permutation[i]];

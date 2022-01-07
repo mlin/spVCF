@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <assert.h>
 #include <deque>
+#include <thread>
 #include <future>
 #include <mutex>
 #include "spVCF.h"

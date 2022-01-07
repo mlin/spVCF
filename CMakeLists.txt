@@ -12,10 +12,10 @@ IF(NOT CMAKE_BUILD_TYPE)
 ENDIF(NOT CMAKE_BUILD_TYPE)
 
 ExternalProject_Add(htslib
-    URL https://github.com/samtools/htslib/releases/download/1.10.2/htslib-1.10.2.tar.bz2
+    URL https://github.com/samtools/htslib/releases/download/1.14/htslib-1.14.tar.bz2
     PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external
     CONFIGURE_COMMAND bash -c "autoreconf && ./configure --with-libdeflate --disable-libcurl --disable-bz2 --disable-lzma --disable-s3 --disable-gcs"
-    PATCH_COMMAND sed -i "s/^CFLAGS .*$/CFLAGS = -O3 -DNDEBUG -march=ivybridge/" Makefile
+    PATCH_COMMAND sed -i "s/^CFLAGS .*$/CFLAGS = -O3 -DNDEBUG -march=haswell/" Makefile
     BUILD_IN_SOURCE 1
     BUILD_COMMAND bash -c "make -n && make -j$(nproc)"
     INSTALL_COMMAND ""
@@ -35,7 +35,7 @@ add_executable(spvcf src/main.cc src/spVCF.cc src/spVCF.h src/strlcpy.h)
 add_dependencies(spvcf htslib)
 target_include_directories(spvcf PRIVATE src ${HTSLIB_SOURCE_DIR})
 if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    target_compile_options(spvcf PRIVATE -fdiagnostics-color=auto -march=ivybridge -g)
+    target_compile_options(spvcf PRIVATE -fdiagnostics-color=auto -march=haswell -g)
     set_target_properties(spvcf PROPERTIES LINK_FLAGS "-static-libgcc -static-libstdc++ -pthread")
 endif()
 target_link_libraries(spvcf ${HTSLIB_BINARY_DIR}/libhts.a libz.a libdeflate.a)
