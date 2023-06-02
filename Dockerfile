@@ -1,4 +1,4 @@
-FROM ubuntu:18.04 AS builder
+FROM ubuntu:20.04 AS builder
 ENV DEBIAN_FRONTEND noninteractive
 
 RUN apt-get -qq update && \
@@ -6,10 +6,10 @@ RUN apt-get -qq update && \
      curl wget ca-certificates git-core less netbase tabix \
      g++ cmake make automake autoconf bash-completion pigz zlib1g-dev
 
-ADD https://github.com/ebiggers/libdeflate/archive/v1.8.tar.gz /tmp
-RUN tar xzf /tmp/v1.8.tar.gz -C /tmp
-WORKDIR /tmp/libdeflate-1.8
-RUN make -j $(nproc) && make install
+ADD https://github.com/ebiggers/libdeflate/archive/v1.18.tar.gz /tmp
+RUN tar xzf /tmp/v1.18.tar.gz -C /tmp
+WORKDIR /tmp/libdeflate-1.18
+RUN cmake -B build && cmake --build build -j$(nproc) && cmake --install build
 
 ADD . /src
 WORKDIR /src
