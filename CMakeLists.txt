@@ -12,9 +12,9 @@ IF(NOT CMAKE_BUILD_TYPE)
 ENDIF(NOT CMAKE_BUILD_TYPE)
 
 ExternalProject_Add(htslib
-    URL https://github.com/samtools/htslib/releases/download/1.14/htslib-1.14.tar.bz2
+    URL https://github.com/samtools/htslib/releases/download/1.17/htslib-1.17.tar.bz2
     PREFIX ${CMAKE_CURRENT_BINARY_DIR}/external
-    CONFIGURE_COMMAND bash -c "autoreconf && ./configure --with-libdeflate --disable-libcurl --disable-bz2 --disable-lzma --disable-s3 --disable-gcs"
+    CONFIGURE_COMMAND bash -c "autoreconf --install && ./configure --with-libdeflate --disable-libcurl --disable-bz2 --disable-lzma --disable-s3 --disable-gcs"
     PATCH_COMMAND sed -i "s/^CFLAGS .*$/CFLAGS = -O3 -DNDEBUG -march=haswell/" Makefile
     BUILD_IN_SOURCE 1
     BUILD_COMMAND bash -c "make -n && make -j$(nproc)"
