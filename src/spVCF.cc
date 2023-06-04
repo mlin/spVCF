@@ -591,7 +591,7 @@ const char *DecoderImpl::ProcessLine(char *input_line) {
                 }
                 continue;
             }
-        } else if (i == 8) {
+        } else if (i == 8 && with_missing_fields_) {
             // Count FORMAT fields for --with-missing-fields
             for (char *FORMAT = tokens[8]; *FORMAT != 0; FORMAT++) {
                 if (*FORMAT == ':') {
@@ -600,7 +600,7 @@ const char *DecoderImpl::ProcessLine(char *input_line) {
             }
             if (format_field_count_ <= 0) {
                 format_field_count_ = format_field_count;
-            } else if (with_missing_fields_ && format_field_count != format_field_count_) {
+            } else if (format_field_count != format_field_count_) {
                 fail(
                     "--with-missing-fields is unsuitable when pVCF lines have varying field FORMATs"
                     "; try piping output through bcftools instead");
