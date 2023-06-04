@@ -41,6 +41,7 @@ task spvcf_encode {
 task spvcf_decode {
     input {
         File spvcf_gz
+        Boolean with_missing_fields = false
         String docker = "ghcr.io/mlin/spvcf:v1.3.0"
     }
 
@@ -54,7 +55,9 @@ task spvcf_decode {
         nm=$(basename "~{spvcf_gz}" .spvcf.gz)
         nm="${nm}.vcf.gz"
         mkdir out
-        bgzip -dc "~{spvcf_gz}" | spvcf decode | bgzip -@ 4 > "out/${nm}"
+        bgzip -dc "~{spvcf_gz}" \
+            | spvcf decode ~{if with_missing_fields then "--with-missing-fields" else ""} \
+            | bgzip -@ 4 > "out/${nm}"
     >>>
 
     runtime {
