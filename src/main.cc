@@ -195,10 +195,11 @@ void help_codec(CodecMode mode) {
              << "Reads spVCF text from standard input if filename is empty or -" << endl
              << endl
              << "Options:" << endl
-             << "  --with-missing-fields Include trailing FORMAT fields with missing values" << endl
-             << "  -o,--output out.vcf   Write to out.vcf instead of standard output" << endl
-             << "  -q,--quiet            Suppress statistics printed to standard error" << endl
-             << "  -h,--help             Show this help message" << endl
+             << "  --with-missing-fields  Include trailing FORMAT fields with missing values"
+             << endl
+             << "  -o,--output out.vcf    Write to out.vcf instead of standard output" << endl
+             << "  -q,--quiet             Suppress statistics printed to standard error" << endl
+             << "  -h,--help              Show this help message" << endl
              << endl;
         break;
     }
