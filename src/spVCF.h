@@ -36,7 +36,7 @@ class Transcoder {
 };
 std::unique_ptr<Transcoder> NewEncoder(uint64_t checkpoint_period, bool sparse, bool squeeze,
                                        double roundDP_base);
-std::unique_ptr<Transcoder> NewDecoder();
+std::unique_ptr<Transcoder> NewDecoder(bool with_missing_fields);
 
 void TabixSlice(const std::string &spvcf_gz, std::vector<std::string> regions, std::ostream &out);
 

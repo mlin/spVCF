@@ -282,7 +282,7 @@ const char *EncoderImpl::ProcessLine(char *input_line) {
         ++sparse_cells;
     }
 
-    // CHECKPOINT -- return a densely-encode row -- if we've switched to a new
+    // CHECKPOINT -- return a densely-encoded row -- if we've switched to a new
     // chromosome OR we've hit the specified period
     ++since_checkpoint_;
     if (chrom_ != tokens[0] ||
@@ -527,13 +527,18 @@ unique_ptr<Transcoder> NewEncoder(uint64_t checkpoint_period, bool sparse, bool 
 
 class DecoderImpl : public TranscoderBase {
   public:
-    DecoderImpl() = default;
+    DecoderImpl(bool with_missing_fields) : with_missing_fields_(with_missing_fields) {}
     DecoderImpl(const DecoderImpl &) = delete;
     const char *ProcessLine(char *input_line) override;
 
   private:
+    void add_missing_fields(const char *entry, int field_count, string &ans);
+
     vector<string> dense_entries_;
     OStringStream buffer_;
+
+    bool with_missing_fields_;
+    int format_field_count_ = 0;
 };
 
 const char *DecoderImpl::ProcessLine(char *input_line) {
@@ -569,13 +574,12 @@ const char *DecoderImpl::ProcessLine(char *input_line) {
     assert(dense_entries_.size() == N);
 
     // Pass through first nine columns
+    int format_field_count = 1;
     buffer_.Clear();
     buffer_ << tokens[0];
     for (int i = 1; i < 9; i++) {
         buffer_ << '\t';
-        if (i != 7) {
-            buffer_ << tokens[i];
-        } else {
+        if (i == 7) {
             // Strip the spVCF_checkpointPOS INFO field if present
             string INFO = tokens[7];
             if (INFO.substr(0, 20) == "spVCF_checkpointPOS=") {
@@ -585,10 +589,24 @@ const char *DecoderImpl::ProcessLine(char *input_line) {
                 } else {
                     buffer_ << '.';
                 }
-            } else {
-                buffer_ << INFO;
+                continue;
+            }
+        } else if (i == 8) {
+            // Count FORMAT fields for --with-missing-fields
+            for (char *FORMAT = tokens[8]; *FORMAT != 0; FORMAT++) {
+                if (*FORMAT == ':') {
+                    format_field_count++;
+                }
+            }
+            if (format_field_count_ <= 0) {
+                format_field_count_ = format_field_count;
+            } else if (with_missing_fields_ && format_field_count != format_field_count_) {
+                fail(
+                    "--with-missing-fields is unsuitable when pVCF lines have varying field FORMATs"
+                    "; try piping output through bcftools instead");
             }
         }
+        buffer_ << tokens[i];
     }
 
     // Iterate over the sparse columns
@@ -604,8 +622,13 @@ const char *DecoderImpl::ProcessLine(char *input_line) {
             if (dense_cursor >= N) {
                 fail("Greater-than-expected number of columns implied by sparse encoding");
             }
-            dense_entries_[dense_cursor++] = t;
-            buffer_ << '\t' << t;
+            string &dense_entry = dense_entries_[dense_cursor++];
+            if (with_missing_fields_) {
+                add_missing_fields(t, format_field_count, dense_entry);
+            } else {
+                dense_entry = t;
+            }
+            buffer_ << '\t' << dense_entry;
         } else {
             // Sparse entry - determine the run length
             uint64_t r = 1;
@@ -655,7 +678,24 @@ const char *DecoderImpl::ProcessLine(char *input_line) {
     return buffer_.Get();
 }
 
-unique_ptr<Transcoder> NewDecoder() { return make_unique<DecoderImpl>(); }
+// Add trailing missing fields to entry (--with-missing-fields); return tmpstr.c_str() or entry
+// itself (if already complete).
+void DecoderImpl::add_missing_fields(const char *entry, int field_count, string &ans) {
+    int entry_field_count = 1;
+    for (char *cursor = const_cast<char *>(entry); *cursor != 0; cursor++) {
+        if (*cursor == ':') {
+            entry_field_count++;
+        }
+    }
+    ans = entry;
+    while (entry_field_count++ < field_count) {
+        ans += ":.";
+    }
+}
+
+unique_ptr<Transcoder> NewDecoder(bool with_missing_fields) {
+    return make_unique<DecoderImpl>(with_missing_fields);
+}
 
 class TabixIterator {
     htsFile *fp_;
@@ -831,7 +871,7 @@ void TabixSlice(const std::string &spvcf_gz, std::vector<std::string> regions, s
 
         // From the checkpoint, run spVCF decoder until we see a line with POS >= region_lo
         // TODO: the correct condition may be END >= region_lo. Needs careful testing.
-        auto decoder = NewDecoder();
+        auto decoder = NewDecoder(false);
         while (true) {
             linecpy = itr->Line();
 
