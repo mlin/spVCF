@@ -195,9 +195,11 @@ void help_codec(CodecMode mode) {
              << "Reads spVCF text from standard input if filename is empty or -" << endl
              << endl
              << "Options:" << endl
-             << "  -o,--output out.vcf  Write to out.vcf instead of standard output" << endl
-             << "  -q,--quiet           Suppress statistics printed to standard error" << endl
-             << "  -h,--help            Show this help message" << endl
+             << "  --with-missing-fields  Include trailing FORMAT fields with missing values"
+             << endl
+             << "  -o,--output out.vcf    Write to out.vcf instead of standard output" << endl
+             << "  -q,--quiet             Suppress statistics printed to standard error" << endl
+             << "  -h,--help              Show this help message" << endl
              << endl;
         break;
     }
@@ -206,16 +208,21 @@ void help_codec(CodecMode mode) {
 int main_codec(int argc, char *argv[], CodecMode mode) {
     bool squeeze = true;
     bool quiet = false;
+    bool with_missing_fields = false;
     string output_filename;
     uint64_t checkpoint_period = 1000;
     size_t thread_count = 1;
     double roundDP_base = 2.0;
 
-    static struct option long_options[] = {
-        {"help", no_argument, 0, 'h'},          {"no-squeeze", no_argument, 0, 'n'},
-        {"period", required_argument, 0, 'p'},  {"resolution", required_argument, 0, 'r'},
-        {"threads", required_argument, 0, 't'}, {"quiet", no_argument, 0, 'q'},
-        {"output", required_argument, 0, 'o'},  {0, 0, 0, 0}};
+    static struct option long_options[] = {{"help", no_argument, 0, 'h'},
+                                           {"no-squeeze", no_argument, 0, 'n'},
+                                           {"period", required_argument, 0, 'p'},
+                                           {"resolution", required_argument, 0, 'r'},
+                                           {"with-missing-fields", no_argument, 0, 'm'},
+                                           {"threads", required_argument, 0, 't'},
+                                           {"quiet", no_argument, 0, 'q'},
+                                           {"output", required_argument, 0, 'o'},
+                                           {0, 0, 0, 0}};
 
     int c;
     while (-1 != (c = getopt_long(argc, argv, "hnp:r:qo:t:", long_options, nullptr))) {
@@ -231,7 +238,7 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
             squeeze = false;
             break;
         case 'p':
-            if (mode == CodecMode::decode) {
+            if (mode != CodecMode::encode) {
                 help_codec(mode);
                 return -1;
             }
@@ -253,6 +260,13 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
                 cerr << "spvcf: invalid --resolution" << endl;
                 return -1;
             }
+            break;
+        case 'm':
+            if (mode != CodecMode::decode) {
+                help_codec(mode);
+                return -1;
+            }
+            with_missing_fields = true;
             break;
         case 't':
             if (mode == CodecMode::decode) {
@@ -322,7 +336,7 @@ int main_codec(int argc, char *argv[], CodecMode mode) {
     if (thread_count <= 1) {
         unique_ptr<spVCF::Transcoder> tc;
         if (mode == CodecMode::decode) {
-            tc = spVCF::NewDecoder();
+            tc = spVCF::NewDecoder(with_missing_fields);
         } else {
             tc = spVCF::NewEncoder(checkpoint_period, (mode == CodecMode::encode), squeeze,
                                    roundDP_base);

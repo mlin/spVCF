@@ -4,7 +4,7 @@ task spvcf_encode {
     input {
         File vcf_gz
         Boolean multithread = false
-        String docker = "ghcr.io/mlin/spvcf:v1.2.0"
+        String docker = "ghcr.io/mlin/spvcf:v1.3.0"
         Int cpu = if multithread then 8 else 4
     }
 
@@ -41,7 +41,8 @@ task spvcf_encode {
 task spvcf_decode {
     input {
         File spvcf_gz
-        String docker = "ghcr.io/mlin/spvcf:v1.2.0"
+        Boolean with_missing_fields = false
+        String docker = "ghcr.io/mlin/spvcf:v1.3.0"
     }
 
     parameter_meta {
@@ -54,7 +55,9 @@ task spvcf_decode {
         nm=$(basename "~{spvcf_gz}" .spvcf.gz)
         nm="${nm}.vcf.gz"
         mkdir out
-        bgzip -dc "~{spvcf_gz}" | spvcf decode | bgzip -@ 4 > "out/${nm}"
+        bgzip -dc "~{spvcf_gz}" \
+            | spvcf decode ~{if with_missing_fields then "--with-missing-fields" else ""} \
+            | bgzip -@ 4 > "out/${nm}"
     >>>
 
     runtime {
@@ -73,7 +76,7 @@ task spvcf_squeeze {
     input {
         File vcf_gz
         Boolean multithread = false
-        String docker = "ghcr.io/mlin/spvcf:v1.2.0"
+        String docker = "ghcr.io/mlin/spvcf:v1.3.0"
         Int cpu = if multithread then 8 else 4
     }
 

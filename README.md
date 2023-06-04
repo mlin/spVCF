@@ -16,7 +16,7 @@ Further resources:
 
 ## `spvcf` utility
 
-[![Build Status](https://travis-ci.org/mlin/spVCF.svg?branch=master)](https://travis-ci.org/mlin/spVCF)
+[![build](https://github.com/mlin/spVCF/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/mlin/spVCF/actions/workflows/build.yml)
 
 This repository has a command-line utility for encoding pVCF to spVCF and vice versa. The [Releases](https://github.com/mlin/spVCF/releases) page has pre-built executables compatible with most Linux x86-64 hosts, which you can download and `chmod +x spvcf`.
 
@@ -55,9 +55,10 @@ spvcf decode [options] [in.spvcf|-]
 Reads spVCF text from standard input if filename is empty or -
 
 Options:
-  -o,--output out.vcf  Write to out.vcf instead of standard output
-  -q,--quiet           Suppress statistics printed to standard error
-  -h,--help            Show this help message
+  --with-missing-fields  Include trailing FORMAT fields with missing values
+  -o,--output out.vcf    Write to out.vcf instead of standard output
+  -q,--quiet             Suppress statistics printed to standard error
+  -h,--help              Show this help message
 ```
 
 There's also `spvcf squeeze` to apply the QC squeezing transformation to a pVCF, without the sparse quote-encoding. This produces valid pVCF that's typically much smaller, although not as small as spVCF.
