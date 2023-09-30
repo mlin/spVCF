@@ -534,14 +534,19 @@ class DecoderImpl : public TranscoderBase {
   private:
     void add_missing_fields(const char *entry, int n_alt, string &ans);
 
+    // temp buffers used in ProcessLine (to reduce allocations)
     vector<string> dense_entries_;
     OStringStream buffer_;
 
     bool with_missing_fields_;
     string format_;
     vector<string> format_split_;
+    int iAD_ = -1, iPL_ = -1;
     vector<string> precomputed_vectors_of_missing_values_;
+    // temp buffers used in add_missing_fields (to reduce allocations)
     OStringStream format_buffer_;
+    string entry_copy_;
+    vector<char *> entry_fields_;
 };
 
 const char *DecoderImpl::ProcessLine(char *input_line) {
@@ -611,7 +616,13 @@ const char *DecoderImpl::ProcessLine(char *input_line) {
                 string format_copy = format_;
                 vector<char *> format_split;
                 split(format_copy, ':', back_inserter(format_split));
-                for (char *s : format_split) {
+                for (int j = 0; j < format_split.size(); j++) {
+                    char *s = format_split[j];
+                    if (!strcmp(s, "AD")) {
+                        iAD_ = j;
+                    } else if (!strcmp(s, "PL")) {
+                        iPL_ = j;
+                    }
                     format_split_.push_back(s);
                 }
                 precomputed_vectors_of_missing_values_.push_back("");
@@ -702,23 +713,24 @@ const char *DecoderImpl::ProcessLine(char *input_line) {
 // correct vector length. (In principle we should do that for any Number={A,G,R} field, but this
 // suffices for our practical need for this feature.)
 void DecoderImpl::add_missing_fields(const char *entry, int n_alt, string &ans) {
-    string entry_copy(entry);
-    vector<char *> fields;
-    split(entry_copy, ':', back_inserter(fields));
     format_buffer_.Clear();
+    entry_copy_ = entry;
+    entry_fields_.clear();
+    split(entry_copy_, ':', back_inserter(entry_fields_));
     for (int i = 0; i < format_split_.size(); i++) {
-        bool present = i < fields.size();
-        if (i) {
+        bool present = i < entry_fields_.size();
+        const char *field = present ? entry_fields_[i] : nullptr;
+        if (i > 0) {
             format_buffer_ << ':';
         }
-        if (format_split_[i] == "AD" && (!present || !strcmp(fields[i], "."))) {
+        if (i == iAD_ && (!present || !strcmp(field, "."))) {
             const int nAD = n_alt + 1;
             format_buffer_ << precomputed_vectors_of_missing_values_.at(nAD);
-        } else if (format_split_[i] == "PL" && (!present || !strcmp(fields[i], "."))) {
+        } else if (i == iPL_ && (!present || !strcmp(field, "."))) {
             const int nPL = (n_alt + 1) * (n_alt + 2) / 2;
             format_buffer_ << precomputed_vectors_of_missing_values_.at(nPL);
         } else {
-            format_buffer_ << (present ? fields[i] : ".");
+            format_buffer_ << (present ? field : ".");
         }
     }
     ans = format_buffer_.Get();
