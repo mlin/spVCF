@@ -532,13 +532,16 @@ class DecoderImpl : public TranscoderBase {
     const char *ProcessLine(char *input_line) override;
 
   private:
-    void add_missing_fields(const char *entry, int field_count, string &ans);
+    void add_missing_fields(const char *entry, int n_alt, string &ans);
 
     vector<string> dense_entries_;
     OStringStream buffer_;
 
     bool with_missing_fields_;
-    int format_field_count_ = 0;
+    string format_;
+    vector<string> format_split_;
+    vector<string> precomputed_vectors_of_missing_values_;
+    OStringStream format_buffer_;
 };
 
 const char *DecoderImpl::ProcessLine(char *input_line) {
@@ -565,6 +568,17 @@ const char *DecoderImpl::ProcessLine(char *input_line) {
         fail("Invalid project VCF: fewer than 10 columns");
     }
 
+    int n_alt = -1;
+    if (with_missing_fields_) {
+        // count n_alt for use in missing fields with Number={A,G,R}
+        n_alt = 1;
+        for (char *alt = tokens[4]; *alt; alt++) {
+            if (*alt == ',') {
+                n_alt++;
+            }
+        }
+    }
+
     // Figure out number of dense columns, the number of columns on the first line
     uint64_t N = dense_entries_.empty() ? (tokens.size() - 9) : dense_entries_.size();
     if (dense_entries_.empty()) {
@@ -574,7 +588,6 @@ const char *DecoderImpl::ProcessLine(char *input_line) {
     assert(dense_entries_.size() == N);
 
     // Pass through first nine columns
-    int format_field_count = 1;
     buffer_.Clear();
     buffer_ << tokens[0];
     for (int i = 1; i < 9; i++) {
@@ -592,15 +605,23 @@ const char *DecoderImpl::ProcessLine(char *input_line) {
                 continue;
             }
         } else if (i == 8 && with_missing_fields_) {
-            // Count FORMAT fields for --with-missing-fields
-            for (char *FORMAT = tokens[8]; *FORMAT != 0; FORMAT++) {
-                if (*FORMAT == ':') {
-                    format_field_count++;
+            if (format_.empty()) {
+                // one-time initialization
+                format_ = tokens[8];
+                string format_copy = format_;
+                vector<char *> format_split;
+                split(format_copy, ':', back_inserter(format_split));
+                for (char *s : format_split) {
+                    format_split_.push_back(s);
+                }
+                precomputed_vectors_of_missing_values_.push_back("");
+                precomputed_vectors_of_missing_values_.push_back(".");
+                for (int l = 2; l < 256; ++l) {
+                    precomputed_vectors_of_missing_values_.push_back(
+                        precomputed_vectors_of_missing_values_[l - 1] + ",.");
                 }
             }
-            if (format_field_count_ <= 0) {
-                format_field_count_ = format_field_count;
-            } else if (format_field_count != format_field_count_) {
+            if (format_ != tokens[8]) {
                 fail(
                     "--with-missing-fields is unsuitable when pVCF lines have varying field FORMATs"
                     "; try piping output through bcftools instead");
@@ -617,14 +638,12 @@ const char *DecoderImpl::ProcessLine(char *input_line) {
             fail("empty cell");
         } else if (*t != '"') {
             // Dense entry - remember it and copy it to the output
-            // TODO: Perhaps fill QC fields with missing values (.) if they were squeezed out.
-            //       The VCF spec does however say "Trailing fields can be dropped"
             if (dense_cursor >= N) {
                 fail("Greater-than-expected number of columns implied by sparse encoding");
             }
             string &dense_entry = dense_entries_[dense_cursor++];
             if (with_missing_fields_) {
-                add_missing_fields(t, format_field_count, dense_entry);
+                add_missing_fields(t, n_alt, dense_entry);
             } else {
                 dense_entry = t;
             }
@@ -678,19 +697,31 @@ const char *DecoderImpl::ProcessLine(char *input_line) {
     return buffer_.Get();
 }
 
-// Add trailing missing fields to entry (--with-missing-fields); return tmpstr.c_str() or entry
-// itself (if already complete).
-void DecoderImpl::add_missing_fields(const char *entry, int field_count, string &ans) {
-    int entry_field_count = 1;
-    for (char *cursor = const_cast<char *>(entry); *cursor != 0; cursor++) {
-        if (*cursor == ':') {
-            entry_field_count++;
+// Add trailing missing fields to entry (--with-missing-fields)
+// Most missing fields are just represented by . except for AD and PL, which we pad with . to the
+// correct vector length. (In principle we should do that for any Number={A,G,R} field, but this
+// suffices for our practical need for this feature.)
+void DecoderImpl::add_missing_fields(const char *entry, int n_alt, string &ans) {
+    string entry_copy(entry);
+    vector<char *> fields;
+    split(entry_copy, ':', back_inserter(fields));
+    format_buffer_.Clear();
+    for (int i = 0; i < format_split_.size(); i++) {
+        bool present = i < fields.size();
+        if (i) {
+            format_buffer_ << ':';
+        }
+        if (format_split_[i] == "AD" && (!present || !strcmp(fields[i], "."))) {
+            const int nAD = n_alt + 1;
+            format_buffer_ << precomputed_vectors_of_missing_values_.at(nAD);
+        } else if (format_split_[i] == "PL" && (!present || !strcmp(fields[i], "."))) {
+            const int nPL = (n_alt + 1) * (n_alt + 2) / 2;
+            format_buffer_ << precomputed_vectors_of_missing_values_.at(nPL);
+        } else {
+            format_buffer_ << (present ? fields[i] : ".");
         }
     }
-    ans = entry;
-    while (entry_field_count++ < field_count) {
-        ans += ":.";
-    }
+    ans = format_buffer_.Get();
 }
 
 unique_ptr<Transcoder> NewDecoder(bool with_missing_fields) {
