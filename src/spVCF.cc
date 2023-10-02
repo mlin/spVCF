@@ -542,7 +542,6 @@ class DecoderImpl : public TranscoderBase {
     string format_;
     vector<string> format_split_;
     int iAD_ = -1, iPL_ = -1;
-    vector<string> precomputed_vectors_of_missing_values_;
     // temp buffers used in add_missing_fields (to reduce allocations)
     OStringStream format_buffer_;
     string entry_copy_;
@@ -581,6 +580,12 @@ const char *DecoderImpl::ProcessLine(char *input_line) {
             if (*alt == ',') {
                 n_alt++;
             }
+        }
+        if (n_alt != 1) {
+            // FIXME: handling multiallelic sites will require add_missing_fields() even on sparse
+            //        entries
+            fail("--with-missing-fields only works with biallelic pVCF for now"
+                 "; try piping output through bcftools instead");
         }
     }
 
@@ -624,12 +629,6 @@ const char *DecoderImpl::ProcessLine(char *input_line) {
                         iPL_ = j;
                     }
                     format_split_.push_back(s);
-                }
-                precomputed_vectors_of_missing_values_.push_back("");
-                precomputed_vectors_of_missing_values_.push_back(".");
-                for (int l = 2; l < 256; ++l) {
-                    precomputed_vectors_of_missing_values_.push_back(
-                        precomputed_vectors_of_missing_values_[l - 1] + ",.");
                 }
             }
             if (format_ != tokens[8]) {
@@ -724,11 +723,12 @@ void DecoderImpl::add_missing_fields(const char *entry, int n_alt, string &ans) 
             format_buffer_ << ':';
         }
         if (i == iAD_ && (!present || !strcmp(field, "."))) {
-            const int nAD = n_alt + 1;
-            format_buffer_ << precomputed_vectors_of_missing_values_.at(nAD);
+            // FIXME: handle multiallelic. Meaning we need to run this on sparse entries too.
+            // const int nAD = n_alt + 1;
+            format_buffer_ << ".,.";
         } else if (i == iPL_ && (!present || !strcmp(field, "."))) {
-            const int nPL = (n_alt + 1) * (n_alt + 2) / 2;
-            format_buffer_ << precomputed_vectors_of_missing_values_.at(nPL);
+            // const int nPL = (n_alt + 1) * (n_alt + 2) / 2;
+            format_buffer_ << ".,.,.";
         } else {
             format_buffer_ << (present ? field : ".");
         }
