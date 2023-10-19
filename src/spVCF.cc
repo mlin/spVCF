@@ -541,7 +541,7 @@ class DecoderImpl : public TranscoderBase {
     bool with_missing_fields_;
     string format_;
     vector<string> format_split_;
-    int iAD_ = -1, iPL_ = -1;
+    int iGT_ = -1, iDP_ = -1, iAD_ = -1, iPL_ = -1;
     // temp buffers used in add_missing_fields (to reduce allocations)
     OStringStream format_buffer_;
     string entry_copy_;
@@ -623,7 +623,11 @@ const char *DecoderImpl::ProcessLine(char *input_line) {
                 split(format_copy, ':', back_inserter(format_split));
                 for (int j = 0; j < format_split.size(); j++) {
                     char *s = format_split[j];
-                    if (!strcmp(s, "AD")) {
+                    if (!strcmp(s, "GT")) {
+                        iGT_ = j;
+                    } else if (!strcmp(s, "DP")) {
+                        iDP_ = j;
+                    } else if (!strcmp(s, "AD")) {
                         iAD_ = j;
                     } else if (!strcmp(s, "PL")) {
                         iPL_ = j;
@@ -711,6 +715,7 @@ const char *DecoderImpl::ProcessLine(char *input_line) {
 // Most missing fields are just represented by . except for AD and PL, which we pad with . to the
 // correct vector length. (In principle we should do that for any Number={A,G,R} field, but this
 // suffices for our practical need for this feature.)
+// For non-variant genotypes we also fill AD={DP},0 if it'd otherwise be missing.
 void DecoderImpl::add_missing_fields(const char *entry, int n_alt, string &ans) {
     format_buffer_.Clear();
     entry_copy_ = entry;
@@ -725,7 +730,19 @@ void DecoderImpl::add_missing_fields(const char *entry, int n_alt, string &ans) 
         if (i == iAD_ && (!present || !strcmp(field, "."))) {
             // FIXME: handle multiallelic. Meaning we need to run this on sparse entries too.
             // const int nAD = n_alt + 1;
-            format_buffer_ << ".,.";
+            const char* gt = nullptr;
+            if (iGT_ >= 0 && iGT_ < entry_fields_.size()) {
+                gt = entry_fields_[iGT_];
+            }
+            const char* dp = nullptr;
+            if (iDP_ >= 0 && iDP_ < entry_fields_.size()) {
+                dp = entry_fields_[iDP_];
+            }
+            if (gt && dp && (strcmp(gt, "0/0") || strcmp(gt, "0|0") || strcmp(gt, "./.") || strcmp(gt, ".|."))) {
+                format_buffer_ << dp << ",0";
+            } else {
+                format_buffer_ << ".,.";
+            }
         } else if (i == iPL_ && (!present || !strcmp(field, "."))) {
             // const int nPL = (n_alt + 1) * (n_alt + 2) / 2;
             format_buffer_ << ".,.,.";
