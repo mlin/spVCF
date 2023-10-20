@@ -730,15 +730,17 @@ void DecoderImpl::add_missing_fields(const char *entry, int n_alt, string &ans) 
         if (i == iAD_ && (!present || !strcmp(field, "."))) {
             // FIXME: handle multiallelic. Meaning we need to run this on sparse entries too.
             // const int nAD = n_alt + 1;
-            const char* gt = nullptr;
+            const char *gt = nullptr;
             if (iGT_ >= 0 && iGT_ < entry_fields_.size()) {
                 gt = entry_fields_[iGT_];
             }
-            const char* dp = nullptr;
+            const char *dp = nullptr;
             if (iDP_ >= 0 && iDP_ < entry_fields_.size()) {
                 dp = entry_fields_[iDP_];
             }
-            if (gt && dp && (strcmp(gt, "0/0") || strcmp(gt, "0|0") || strcmp(gt, "./.") || strcmp(gt, ".|."))) {
+            if (gt && dp &&
+                (strcmp(gt, "0/0") || strcmp(gt, "0|0") || strcmp(gt, "./.") ||
+                 strcmp(gt, ".|."))) {
                 format_buffer_ << dp << ",0";
             } else {
                 format_buffer_ << ".,.";
